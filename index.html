@@ -282,14 +282,13 @@ tr:last-child td{border-bottom:none;}
     <div class="modal-box" style="max-width:380px;">
       <div class="modal-head"><span>Acceso</span></div>
       <div class="modal-body">
-        <p class="sub" style="margin-top:0;" id="authMsg">Inicia sesión para acceder al cuadrante compartido.</p>
+        <p class="sub" style="margin-top:0;" id="authMsg">Acceso solo para usuarios autorizados. Inicia sesión con tu email y contraseña.</p>
         <label>Email</label><br>
         <input type="email" id="authEmail" style="width:100%;margin:6px 0 12px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
         <label>Contraseña</label><br>
         <input type="password" id="authPass" style="width:100%;margin:6px 0 16px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
         <div class="row">
           <button id="authLoginBtn" type="button">Entrar</button>
-          <button class="ghost" id="authSignupBtn" type="button">Crear cuenta</button>
         </div>
       </div>
     </div>
@@ -1381,23 +1380,6 @@ document.getElementById('authLoginBtn').addEventListener('click', async ()=>{
   hideLogin();
   updateUserBadge();
   await startApp();
-});
-document.getElementById('authSignupBtn').addEventListener('click', async ()=>{
-  const email = document.getElementById('authEmail').value.trim();
-  const pass = document.getElementById('authPass').value;
-  if(!email || !pass){ showAuthMsg('Rellena email y contraseña.', true); return; }
-  if(pass.length < 6){ showAuthMsg('La contraseña debe tener al menos 6 caracteres.', true); return; }
-  showAuthMsg('Creando cuenta...');
-  const {data, error} = await supabaseClient.auth.signUp({email, password:pass});
-  if(error){ showAuthMsg(error.message, true); return; }
-  if(data.session){
-    currentUser = data.user;
-    hideLogin();
-    updateUserBadge();
-    await startApp();
-  } else {
-    showAuthMsg('Cuenta creada. Revisa tu email para confirmar el acceso y luego pulsa "Entrar".');
-  }
 });
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
   if(supabaseClient) await supabaseClient.auth.signOut();
