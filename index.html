@@ -265,7 +265,7 @@ tr:last-child td{border-bottom:none;}
 
   <div class="row" style="margin-bottom:10px;">
     <button class="secondary" id="ajustesBtn" type="button">Ajustes ▾</button>
-    <button class="secondary" id="dbBtn" type="button">Base de datos</button>
+    <button class="secondary" id="dbBtn" type="button">Cuadrantes pasados</button>
     <span class="sub" id="userBadge" style="display:none;"></span>
     <button class="ghost" id="logoutBtn" type="button" style="display:none;">Cerrar sesión</button>
   </div>
@@ -1027,7 +1027,7 @@ let modalUnitsDraft = [];
 let modalUnitDefsDraft = {};
 let modalHabDraft = new Set();
 
-function closeModal(){ modalOverlay.style.display = 'none'; modalMode = null; }
+function closeModal(){ modalOverlay.style.display = 'none'; modalMode = null; document.getElementById('modalSave').style.display = ''; }
 document.getElementById('modalClose').addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', e=>{ if(e.target === modalOverlay) closeModal(); });
 
@@ -1192,21 +1192,55 @@ function drawPatrimonioForm(){
   modalBody.appendChild(note);
 }
 
-// ---------- MODAL: BASE DE DATOS ----------
-function renderDbModal(){
-  modalMode = 'db';
-  const cfg = getSupabaseConfig();
-  document.getElementById('modalTitle').textContent = 'Base de datos compartida (Supabase)';
-  document.getElementById('modalHint').textContent = supabaseClient ? 'Conectado ✓' : 'Sin conectar: usando almacenamiento solo local de este navegador.';
-  modalBody.innerHTML = `
-    <p class="sub" style="margin-top:0;">Conecta un proyecto gratuito de Supabase para que todos los que abran esta web (desde cualquier dispositivo) vean y editen el mismo cuadrante, ausencias y configuración.</p>
-    <label>URL del proyecto</label><br>
-    <input type="text" id="sbUrl" placeholder="https://xxxxx.supabase.co" value="${cfg.url}" style="width:100%;margin:6px 0 14px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
-    <label>Clave anon public</label><br>
-    <input type="text" id="sbKey" placeholder="eyJhbGciOi..." value="${cfg.key}" style="width:100%;margin:6px 0 14px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
-    <p class="sub">Estas dos claves se guardan en este navegador (no son secretas, están pensadas para uso público en el cliente). Pídeselas a quien haya creado el proyecto en supabase.com.</p>
-  `;
+// ---------- MODAL: CUADRANTES PASADOS ----------
+async function renderPastModal(){
+  modalMode = 'past';
+  document.getElementById('modalTitle').textContent = 'Cuadrantes pasados';
+  document.getElementById('modalHint').textContent = 'Abre una semana para revisarla o modificarla.';
+  document.getElementById('modalSave').style.display = 'none';
+  modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Cargando...</p>';
   modalOverlay.style.display = 'flex';
+
+  let index = [];
+  try{
+    const indexRes = await appStorage.get('cuadrante_index', false);
+    index = indexRes && indexRes.value ? JSON.parse(indexRes.value) : [];
+  }catch(e){}
+
+  if(!index.length){
+    modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Todavía no hay cuadrantes guardados. Cada cuadrante que generes se guarda aquí automáticamente.</p>';
+    return;
+  }
+
+  modalBody.innerHTML = '';
+  index.slice().reverse().forEach(mondayIso=>{
+    const dateObj = new Date(mondayIso + 'T00:00:00');
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    row.style.marginBottom = '8px';
+    row.innerHTML = `<span>Semana del ${fmtDate(dateObj)}</span>`;
+    const openBtn = document.createElement('button');
+    openBtn.textContent = 'Abrir';
+    openBtn.addEventListener('click', async ()=>{
+      closeModal();
+      await goToWeek(dateObj, false);
+      window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior:'smooth'});
+    });
+    const delBtn = document.createElement('button');
+    delBtn.className = 'del';
+    delBtn.textContent = 'Eliminar';
+    delBtn.addEventListener('click', async ()=>{
+      if(!confirm('¿Eliminar el cuadrante de la semana del ' + fmtDate(dateObj) + '? Esta acción no se puede deshacer.')) return;
+      try{ await appStorage.delete('cuadrante:' + mondayIso, false); }catch(e){}
+      const newIndex = index.filter(x=>x!==mondayIso);
+      await appStorage.set('cuadrante_index', JSON.stringify(newIndex), false);
+      loadHistory();
+      renderPastModal();
+    });
+    row.appendChild(openBtn);
+    row.appendChild(delBtn);
+    modalBody.appendChild(row);
+  });
 }
 
 // ---------- MODAL: PAREJAS PREFERENTES ----------
@@ -1307,7 +1341,7 @@ document.getElementById('lunaBtn').addEventListener('click', ()=>renderHabilitad
 document.getElementById('salaBtn').addEventListener('click', ()=>renderHabilitadosModal('sala'));
 document.getElementById('patrimonioBtn').addEventListener('click', renderPatrimonioModal);
 document.getElementById('pairsBtn').addEventListener('click', renderPairsModal);
-document.getElementById('dbBtn').addEventListener('click', renderDbModal);
+document.getElementById('dbBtn').addEventListener('click', renderPastModal);
 
 document.getElementById('modalSave').addEventListener('click', async ()=>{
   if(modalMode === 'units'){
@@ -1327,13 +1361,6 @@ document.getElementById('modalSave').addEventListener('click', async ()=>{
   } else if(modalMode === 'pairs'){
     preferredPairs = JSON.parse(JSON.stringify(modalPairsDraft));
     await savePreferredPairs();
-  } else if(modalMode === 'db'){
-    const url = document.getElementById('sbUrl').value.trim();
-    const key = document.getElementById('sbKey').value.trim();
-    localStorage.setItem('cuadrante_sb_url', url);
-    localStorage.setItem('cuadrante_sb_key', key);
-    initSupabase();
-    await checkAuthAndStart();
   }
   closeModal();
 });
