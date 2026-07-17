@@ -437,10 +437,13 @@ let absentSet = new Set();
 // Prioridad: 1) window.storage (dentro de Claude) 2) Supabase (base de datos compartida,
 // si está configurada) 3) localStorage del navegador (solo local, sin compartir entre dispositivos).
 let supabaseClient = null;
+// Proyecto Supabase por defecto (la clave publishable es pública por diseño).
+const SUPABASE_URL_DEFAULT = 'https://mwetsimpflqgtvomujvx.supabase.co';
+const SUPABASE_KEY_DEFAULT = 'sb_publishable_J5PWfrhJ6doKfdYPBhajjw_KAZhdrXQ';
 function getSupabaseConfig(){
   return {
-    url: localStorage.getItem('cuadrante_sb_url') || '',
-    key: localStorage.getItem('cuadrante_sb_key') || ''
+    url: localStorage.getItem('cuadrante_sb_url') || SUPABASE_URL_DEFAULT,
+    key: localStorage.getItem('cuadrante_sb_key') || SUPABASE_KEY_DEFAULT
   };
 }
 function initSupabase(){
