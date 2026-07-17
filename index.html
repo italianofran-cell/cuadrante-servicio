@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cuadrante de Servicio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#0f141b;
+  --panel:#161d27;
+  --panel-2:#1c2530;
+  --line:#2a3441;
+  --text:#e9edf2;
+  --muted:#8b98a8;
+  --amber:#f2a93b;
+  --cyan:#4fd1c5;
+  --red:#e2574c;
+  --font-display:'Space Grotesk',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-mono);
+  padding:28px 18px 60px;
+}
+.wrap{max-width:980px;margin:0 auto;}
+header{margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:18px;}
+h1{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:26px;
+  letter-spacing:.5px;
+  margin:0 0 4px;
+  color:var(--amber);
+}
+.sub{color:var(--muted);font-size:13px;}
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:18px 20px;
+  margin-bottom:18px;
+}
+.panel h2{
+  font-family:var(--font-display);
+  font-size:14px;
+  text-transform:uppercase;
+  letter-spacing:1px;
+  color:var(--cyan);
+  margin:0 0 14px;
+}
+.row{display:flex;gap:16px;align-items:center;flex-wrap:wrap;}
+label{font-size:13px;color:var(--muted);}
+input[type=date]{
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  color:var(--text);
+  padding:8px 10px;
+  border-radius:6px;
+  font-family:var(--font-mono);
+  font-size:14px;
+}
+.week-tag{
+  font-family:var(--font-display);
+  font-weight:600;
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  padding:6px 12px;
+  border-radius:6px;
+  font-size:13px;
+}
+.week-tag b{color:var(--amber);}
+.groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;}
+.group-title{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;}
+.chip{
+  display:flex;align-items:center;gap:6px;
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:20px;
+  padding:5px 10px 5px 6px;
+  font-size:12.5px;
+  cursor:pointer;
+  user-select:none;
+  transition:.15s;
+}
+.chip input{accent-color:var(--red);cursor:pointer;}
+.chip.absent{
+  background:rgba(226,87,76,.12);
+  border-color:var(--red);
+  color:#f5b3ad;
+}
+button{
+  font-family:var(--font-display);
+  font-weight:600;
+  font-size:14px;
+  letter-spacing:.3px;
+  background:var(--amber);
+  color:#1a1305;
+  border:none;
+  padding:12px 22px;
+  border-radius:7px;
+  cursor:pointer;
+}
+button:hover{filter:brightness(1.08);}
+button.ghost{
+  background:transparent;
+  border:1px solid var(--line);
+  color:var(--muted);
+  padding:10px 16px;
+  font-size:12.5px;
+}
+button.secondary{
+  background:var(--panel-2);
+  color:var(--cyan);
+  border:1px solid var(--cyan);
+}
+button:disabled{opacity:.4;cursor:not-allowed;}
+.day-card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  margin-bottom:16px;
+  overflow:hidden;
+}
+.day-head{
+  background:var(--panel-2);
+  padding:12px 18px;
+  display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid var(--line);
+}
+.day-head .d{font-family:var(--font-display);font-weight:700;font-size:15px;}
+.day-head .sys{font-size:11.5px;color:var(--muted);}
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+td,th{padding:8px 18px;text-align:left;border-bottom:1px solid var(--line);}
+th{color:var(--muted);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;}
+tr:last-child td{border-bottom:none;}
+.unit{font-family:var(--font-display);font-weight:600;color:var(--cyan);}
+.agent{color:var(--text);}
+.empty{color:var(--red);font-style:italic;}
+.pico-row{background:rgba(242,169,59,.06);}
+.pico-row .unit{color:var(--amber);}
+.footnote{color:var(--muted);font-size:11.5px;padding:10px 18px;}
+.skip-note{
+  color:var(--muted);
+  font-size:13px;
+  padding:14px 18px;
+  font-style:italic;
+}
+.history-list{display:flex;flex-wrap:wrap;gap:8px;}
+.history-item{
+  display:flex;align-items:center;gap:8px;
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:7px;
+  padding:6px 6px 6px 12px;
+  font-size:12.5px;
+}
+.history-item button{padding:5px 10px;font-size:11.5px;}
+.history-item .del{background:transparent;border:1px solid var(--red);color:var(--red);padding:5px 8px;}
+.results-toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.modal-overlay{
+  position:fixed;inset:0;
+  background:rgba(6,9,13,.72);
+  display:flex;align-items:center;justify-content:center;
+  z-index:100;
+  padding:20px;
+}
+.modal-box{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  width:100%;
+  max-width:560px;
+  max-height:82vh;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.modal-head{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:16px 20px;
+  border-bottom:1px solid var(--line);
+  font-family:var(--font-display);
+  font-weight:700;
+  color:var(--amber);
+}
+.modal-body{padding:16px 20px;overflow-y:auto;flex:1;}
+.modal-foot{
+  padding:14px 20px;
+  border-top:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center;
+  gap:10px;
+}
+.unit-row{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:7px;
+  padding:8px 10px 8px 14px;
+  margin-bottom:6px;
+  font-size:13px;
+}
+.unit-row .arrows{display:flex;gap:4px;}
+.unit-row .arrows button{
+  padding:4px 9px;
+  font-size:12px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  color:var(--cyan);
+}
+.unit-row .idx{color:var(--muted);margin-right:8px;font-family:var(--font-mono);}
+.hab-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px;}
+.hab-chip{
+  display:flex;align-items:center;gap:6px;
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:20px;
+  padding:5px 10px 5px 6px;
+  font-size:12.5px;
+  cursor:pointer;
+}
+.hab-chip.on{background:rgba(79,209,197,.14);border-color:var(--cyan);color:#bdf3ee;}
+.hab-chip input{accent-color:var(--cyan);cursor:pointer;}
+.results-header{
+  background:var(--panel-2);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:16px 20px;
+  margin-bottom:16px;
+}
+.results-header .week-num{
+  font-family:var(--font-display);
+  font-weight:700;
+  font-size:22px;
+  color:var(--amber);
+}
+.results-header .range{color:var(--muted);font-size:13px;margin-top:2px;}
+@media print{
+  body{background:#fff;color:#000;padding:0;}
+  body *{visibility:hidden;}
+  #results, #results *{visibility:visible;}
+  #results{position:absolute;left:0;top:0;width:100%;}
+  .day-card{border:1px solid #ccc;break-inside:avoid;}
+  .day-head{background:#f0f0f0;}
+  .unit{color:#000;}
+  .empty{color:#b00;}
+  .results-header{border:1px solid #ccc;background:#fafafa;}
+  .results-header .week-num{color:#000;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>CUADRANTE DE SERVICIO</h1>
+    <div class="sub">Selecciona la semana, marca quien NO está operativo y genera el reparto. El reparto es aleatorio y equitativo, evitando repetir unidad para el mismo agente dentro de la semana.</div>
+  </header>
+
+  <div class="row" style="margin-bottom:10px;">
+    <button class="secondary" id="ajustesBtn" type="button">Ajustes ▾</button>
+    <button class="secondary" id="dbBtn" type="button">Base de datos</button>
+    <span class="sub" id="userBadge" style="display:none;"></span>
+    <button class="ghost" id="logoutBtn" type="button" style="display:none;">Cerrar sesión</button>
+  </div>
+
+  <div class="row" id="ajustesPanel" style="display:none;margin-bottom:18px;">
+    <button class="secondary" id="unitsBtn" type="button">Unidades y prioridad</button>
+    <button class="secondary" id="lunaBtn" type="button">Habilitados LUNA</button>
+    <button class="secondary" id="salaBtn" type="button">Habilitados SALA</button>
+    <button class="secondary" id="patrimonioBtn" type="button">Fijos Patrimonio</button>
+    <button class="secondary" id="pairsBtn" type="button">Parejas preferentes</button>
+  </div>
+
+  <div id="authOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box" style="max-width:380px;">
+      <div class="modal-head"><span>Acceso</span></div>
+      <div class="modal-body">
+        <p class="sub" style="margin-top:0;" id="authMsg">Inicia sesión para acceder al cuadrante compartido.</p>
+        <label>Email</label><br>
+        <input type="email" id="authEmail" style="width:100%;margin:6px 0 12px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
+        <label>Contraseña</label><br>
+        <input type="password" id="authPass" style="width:100%;margin:6px 0 16px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
+        <div class="row">
+          <button id="authLoginBtn" type="button">Entrar</button>
+          <button class="ghost" id="authSignupBtn" type="button">Crear cuenta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="modalTitle"></span>
+        <button class="ghost" id="modalClose" type="button">Cerrar</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot">
+        <span class="sub" id="modalHint"></span>
+        <button id="modalSave" type="button">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Semana</h2>
+    <div class="row">
+      <div>
+        <label>Elige cualquier día de la semana a cuadrar</label><br>
+        <input type="date" id="datePicker" value="2026-07-13">
+      </div>
+      <div class="week-tag" id="weekTag">—</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>No operativos esta semana</h2>
+    <div id="groups" class="groups"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="ghost" id="clearBtn" type="button">Marcar todos operativos</button>
+      <span class="sub" id="absCount"></span>
+    </div>
+  </div>
+
+  <div class="row" style="margin-bottom:20px;">
+    <button id="genBtn">Generar cuadrante</button>
+  </div>
+
+  <div class="panel" id="historyPanel" style="display:none;">
+    <h2>Cuadrantes guardados</h2>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div class="results-toolbar" id="resultsToolbar" style="display:none;">
+    <button class="secondary" id="pdfBtn" type="button">Generar PDF</button>
+    <button class="secondary" id="jpgBtn" type="button">Descargar JPG</button>
+    <span class="sub" id="saveStatus"></span>
+  </div>
+
+  <div id="results"></div>
+
+  <div class="row" id="weekNav" style="display:none;margin-top:10px;">
+    <button class="ghost" id="prevWeekBtn" type="button">◀ Semana anterior</button>
+    <button class="secondary" id="nextWeekBtn" type="button">Generar siguiente semana ▶</button>
+  </div>
+</div>
+
+<script>
+const AGENTS = {
+  CH119:{label:'CH119 · Jefe de Servicio', cat:'mando'},
+  CH154:{label:'CH154 · Subinspector', cat:'mando'},
+  CH164:{label:'CH164 · Subinspector', cat:'mando'},
+  582:{label:'582', cat:'g43'}, 633:{label:'633', cat:'g43'}, 642:{label:'642', cat:'g43'},
+  647:{label:'647', cat:'g43'}, 669:{label:'669', cat:'g43'}, 791:{label:'791', cat:'g43'},
+  914:{label:'914', cat:'g43'}, 979:{label:'979', cat:'g43'}, 724:{label:'724', cat:'g43'},
+  864:{label:'864', cat:'g52'}, 908:{label:'908', cat:'g52'}, 1015:{label:'1015', cat:'g52'},
+  1043:{label:'1043', cat:'g52'}, 1058:{label:'1058', cat:'g52'}, 1131:{label:'1131', cat:'g52'},
+  1133:{label:'1133', cat:'g52'}, 1140:{label:'1140', cat:'g52'}, 1162:{label:'1162', cat:'g52'},
+  1165:{label:'1165', cat:'g52'}, 1205:{label:'1205', cat:'g52'}, 1232:{label:'1232', cat:'g52'},
+  1257:{label:'1257', cat:'g52'},
+  995:{label:'995', cat:'g2'}, 1041:{label:'1041', cat:'g2'}, 1068:{label:'1068', cat:'g2'},
+  1111:{label:'1111', cat:'g2'}, 1112:{label:'1112', cat:'g2'}, 1132:{label:'1132', cat:'g2'},
+  1151:{label:'1151', cat:'g2'}, 1161:{label:'1161', cat:'g2'}, 1167:{label:'1167', cat:'g2'},
+  1174:{label:'1174', cat:'g2'}, 1175:{label:'1175', cat:'g2'}, 1258:{label:'1258', cat:'g2'}
+};
+const CAT_LABELS = {
+  mando:'Mando (sistema 4-3)',
+  g43:'Grupo 1 · sistema 4-3',
+  g52:'Grupo 1 · sistema 5-2',
+  g2:'Grupo 2 (lunes + domingo si 4-3 trabaja domingo)'
+};
+const MANDO_ORDER = ['CH119','CH154','CH164'];
+const G43_RANGO = ['582','633','642','647','669','791','914','979','724'];
+const G52_RANGO = ['864','908','1015','1043','1058','1131','1133','1140','1162','1165','1205','1232','1257'];
+const G2 = ['995','1041','1068','1111','1112','1132','1151','1161','1167','1174','1175','1258'];
+const ALL_RANGO_IDS = [...G43_RANGO, ...G52_RANGO, ...G2];
+
+// Valores por defecto (se pueden editar desde los botones "Habilitados LUNA / SALA")
+const DEFAULT_SALA_HAB = ['979','914','1043','633','1111','995','791'];
+const DEFAULT_LUNA_HAB = ['633','669','914','979','864','908','1015','1058','995','1041','1112'];
+let habilitadosSala = [...DEFAULT_SALA_HAB];
+let habilitadosLuna = [...DEFAULT_LUNA_HAB];
+function salaHab(){ return habilitadosSala; }
+function sala1Hab(){ return habilitadosSala.filter(id=>id!=='791'); } // 791 nunca puede hacer SALA 1
+function lunaHab(){ return habilitadosLuna; }
+
+// Fijos de patrimonio (AYUNTAMIENTO / ALMUDI). PUERTA no tiene fijo: la puede hacer cualquiera.
+let fijosPatrimonio = { ayuntamientoTitular:'633', ayuntamientoBackup:'724', almudiTitular:'582' };
+
+// Parejas preferentes: [{a:'979', b:'791', days:['Martes','Sábado']}, ...]
+let preferredPairs = [];
+
+// Reglas temporales vigentes hasta el 01/09/2026:
+// - SALA 2 solo existe como tal Viernes y Sábado; el resto de días ese puesto se llama V CH (mismos habilitados que SALA 2)
+// - PUERTA solo la cubren los habilitados de SALA
+// - El agente 724 deja de existir a partir de esta fecha (ya no entra en el reparto)
+const TEMP_RULES_CUTOFF = new Date(2026,8,1);
+
+// Definición de unidades (metadatos). El ORDEN de prioridad se guarda aparte en unitPriority.
+// Ambas cosas (definiciones y orden) son editables desde el botón "Unidades y prioridad":
+// se pueden reordenar, añadir unidades nuevas o eliminar unidades existentes.
+let UNIT_DEFS = {
+  'AYUNTAMIENTO': {count:1, special:'ayuntamiento', label:'AYUNTAMIENTO'},
+  'ALMUDI': {count:1, special:'almudi', label:'ALMUDI'},
+  'PUERTA': {count:1, special:'puerta', label:'PUERTA'},
+  'SALA 1': {count:1, restrictType:'SALA1', unitKey:'SALA', label:'SALA 1'},
+  'SALA 2': {count:1, restrictType:'SALA2', unitKey:'SALA', label:'SALA 2 (V CH entre semana hasta 01/09)'},
+  'V10': {count:2, label:'V10'},
+  'V20': {count:2, label:'V20'},
+  'V40': {count:2, label:'V40'},
+  'V30': {count:2, label:'V30'},
+  'V60': {count:2, label:'V60'},
+  'LUNA': {count:2, restrictType:'LUNA', label:'LUNA'}
+};
+const DEFAULT_UNIT_PRIORITY = Object.keys(UNIT_DEFS);
+let unitPriority = [...DEFAULT_UNIT_PRIORITY];
+
+function getRestrictList(restrictType){
+  if(restrictType==='SALA1') return sala1Hab();
+  if(restrictType==='SALA2') return salaHab();
+  if(restrictType==='LUNA') return lunaHab();
+  return null;
+}
+
+const DAY_NAMES = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+
+let absentSet = new Set();
+
+// ---------- ALMACENAMIENTO ----------
+// Prioridad: 1) window.storage (dentro de Claude) 2) Supabase (base de datos compartida,
+// si está configurada) 3) localStorage del navegador (solo local, sin compartir entre dispositivos).
+let supabaseClient = null;
+function getSupabaseConfig(){
+  return {
+    url: localStorage.getItem('cuadrante_sb_url') || '',
+    key: localStorage.getItem('cuadrante_sb_key') || ''
+  };
+}
+function initSupabase(){
+  const cfg = getSupabaseConfig();
+  if(cfg.url && cfg.key && window.supabase){
+    try{ supabaseClient = window.supabase.createClient(cfg.url, cfg.key); }
+    catch(e){ supabaseClient = null; console.error('Supabase init error', e); }
+  } else {
+    supabaseClient = null;
+  }
+}
+
+const appStorage = {
+  async get(key, shared){
+    if(window.storage) return window.storage.get(key, shared);
+    if(supabaseClient){
+      const {data, error} = await supabaseClient.from('cuadrante_kv').select('value').eq('key', key).maybeSingle();
+      if(error) throw error;
+      if(!data) throw new Error('not found');
+      return {key, value: data.value, shared: !!shared};
+    }
+    const raw = localStorage.getItem('cuadrante_' + key);
+    if(raw === null) throw new Error('not found');
+    return {key, value: raw, shared: !!shared};
+  },
+  async set(key, value, shared){
+    if(window.storage) return window.storage.set(key, value, shared);
+    if(supabaseClient){
+      const {error} = await supabaseClient.from('cuadrante_kv').upsert({key, value, updated_at:new Date().toISOString()});
+      if(error) throw error;
+      return {key, value, shared: !!shared};
+    }
+    localStorage.setItem('cuadrante_' + key, value);
+    return {key, value, shared: !!shared};
+  },
+  async delete(key, shared){
+    if(window.storage) return window.storage.delete(key, shared);
+    if(supabaseClient){
+      const {error} = await supabaseClient.from('cuadrante_kv').delete().eq('key', key);
+      if(error) throw error;
+      return {key, deleted:true, shared: !!shared};
+    }
+    localStorage.removeItem('cuadrante_' + key);
+    return {key, deleted:true, shared: !!shared};
+  }
+};
+
+async function loadAbsences(){
+  try{
+    const res = await appStorage.get('absentees', false);
+    if(res && res.value) absentSet = new Set(JSON.parse(res.value));
+  }catch(e){}
+  renderGroups();
+}
+async function saveAbsences(){
+  try{ await appStorage.set('absentees', JSON.stringify([...absentSet]), false); }
+  catch(e){ console.error('No se pudo guardar', e); }
+}
+function renderGroups(){
+  const container = document.getElementById('groups');
+  container.innerHTML = '';
+  const byCat = {mando:[], g43:[], g52:[], g2:[]};
+  Object.keys(AGENTS).forEach(id=>byCat[AGENTS[id].cat].push(id));
+  Object.keys(byCat).forEach(cat=>{
+    const div = document.createElement('div');
+    const title = document.createElement('div');
+    title.className='group-title';
+    title.textContent = CAT_LABELS[cat];
+    div.appendChild(title);
+    const chips = document.createElement('div');
+    chips.className='chips';
+    byCat[cat].forEach(id=>{
+      const chip = document.createElement('label');
+      chip.className = 'chip' + (absentSet.has(id) ? ' absent' : '');
+      chip.innerHTML = `<input type="checkbox" ${absentSet.has(id)?'checked':''} data-id="${id}"> ${AGENTS[id].label}`;
+      chip.querySelector('input').addEventListener('change', e=>{
+        if(e.target.checked) absentSet.add(id); else absentSet.delete(id);
+        saveAbsences();
+        renderGroups();
+      });
+      chips.appendChild(chip);
+    });
+    div.appendChild(chips);
+    container.appendChild(div);
+  });
+  document.getElementById('absCount').textContent = absentSet.size + ' no operativo(s) marcado(s)';
+}
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  absentSet.clear();
+  saveAbsences();
+  renderGroups();
+});
+
+function getMonday(d){
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = (day===0 ? -6 : 1-day);
+  date.setDate(date.getDate()+diff);
+  return date;
+}
+function getISOWeek(date){
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const firstThursday = d.getTime();
+  d.setUTCMonth(0,1);
+  if(d.getUTCDay() !== 4) d.setUTCMonth(0, 1 + ((4 - d.getUTCDay()) + 7) % 7);
+  return 1 + Math.round((firstThursday - d) / (7*24*3600*1000));
+}
+function fmtDate(d){ return d.toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit', year:'numeric'}); }
+function isoDate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function updateWeekTag(){
+  const val = document.getElementById('datePicker').value;
+  if(!val) return null;
+  const picked = new Date(val + 'T00:00:00');
+  const monday = getMonday(picked);
+  const weekNum = getISOWeek(monday);
+  const parity = ((weekNum - 29) % 2 + 2) % 2;
+  const weekType = parity === 0 ? 'A' : 'B';
+  document.getElementById('weekTag').innerHTML = `Semana <b>${weekNum}</b> · fase <b>${weekType}</b> · lunes ${fmtDate(monday)}`;
+  return {monday, weekNum, weekType};
+}
+document.getElementById('datePicker').addEventListener('change', updateWeekTag);
+
+function workingSetsForWeek(weekType){
+  if(weekType === 'A'){
+    return {
+      g52days: ['Lunes','Martes','Viernes','Sábado','Domingo'],
+      g43days: ['Martes','Viernes','Sábado'],
+      mandodays: ['Martes','Viernes','Sábado'],
+      g2days: ['Lunes']
+    };
+  }
+  return {
+    g52days: ['Miércoles','Jueves'],
+    g43days: ['Lunes','Miércoles','Jueves','Domingo'],
+    mandodays: ['Lunes','Miércoles','Jueves','Domingo'],
+    g2days: ['Lunes','Domingo']
+  };
+}
+
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+
+function buildDay(dayName, sets, counts, doneMap, dateObj){
+  const tempActive = dateObj ? (dateObj < TEMP_RULES_CUTOFF) : false;
+  const isFriSat = (dayName === 'Viernes' || dayName === 'Sábado');
+  const poolIds = [];
+  if(sets.g43days.includes(dayName)) G43_RANGO.forEach(id=>poolIds.push(id));
+  if(sets.g52days.includes(dayName)) G52_RANGO.forEach(id=>poolIds.push(id));
+  if(sets.g2days.includes(dayName)) G2.forEach(id=>poolIds.push(id));
+  const mandoToday = MANDO_ORDER.filter(id=>sets.mandodays.includes(dayName));
+
+  let pool = poolIds.filter(id=>!absentSet.has(id));
+  if(!tempActive) pool = pool.filter(id=>id!=='724'); // el 724 deja de existir a partir del 01/09/2026
+  const mandoPresentes = mandoToday.filter(id=>!absentSet.has(id));
+
+  function commit(id, unitKey){
+    counts[id] = (counts[id]||0) + 1;
+    if(!doneMap[id]) doneMap[id] = new Set();
+    doneMap[id].add(unitKey);
+    pool = pool.filter(x=>x!==id);
+    return id;
+  }
+  function chooseFair(candidateIds, unitKey){
+    if(!candidateIds.length) return null;
+    const notRepeat = candidateIds.filter(id => !(doneMap[id] && doneMap[id].has(unitKey)));
+    const usePool = notRepeat.length ? notRepeat : candidateIds;
+    const shuffled = shuffle([...usePool]);
+    shuffled.sort((a,b)=>(counts[a]||0)-(counts[b]||0));
+    return commit(shuffled[0], unitKey);
+  }
+
+  const assignments = [];
+
+  // ---- Parejas preferentes: reservan la primera unidad de 2 efectivos compatible que encuentren ----
+  const claimedUnits = {}; // unitKeyOrig -> [idA, idB]
+  preferredPairs.filter(p=>p.days.includes(dayName)).forEach(p=>{
+    if(!pool.includes(p.a) || !pool.includes(p.b)) return; // alguno no trabaja o está ausente hoy
+    for(const key of unitPriority){
+      if(claimedUnits[key]) continue;
+      const def = UNIT_DEFS[key];
+      if(!def || def.count !== 2) continue;
+      if(def.restrictType){
+        const list = getRestrictList(def.restrictType);
+        if(!list.includes(p.a) || !list.includes(p.b)) continue;
+      }
+      claimedUnits[key] = [p.a, p.b];
+      break;
+    }
+  });
+
+  unitPriority.forEach(unitKeyOrig=>{
+    const defOrig = UNIT_DEFS[unitKeyOrig];
+    if(!defOrig) return; // clave desconocida (config corrupta), se ignora
+    let displayKey = unitKeyOrig;
+    if(unitKeyOrig === 'SALA 2' && tempActive && !isFriSat){
+      displayKey = 'V CH';
+    }
+    const u = Object.assign({key:displayKey}, defOrig);
+
+    if(claimedUnits[unitKeyOrig]){
+      const [idA, idB] = claimedUnits[unitKeyOrig];
+      commit(idA, u.unitKey || unitKeyOrig);
+      commit(idB, u.unitKey || unitKeyOrig);
+      assignments.push({unit:u.key, agents:[idA, idB]});
+      return;
+    }
+
+    const agents = [];
+    for(let i=0;i<u.count;i++){
+      let ag = null;
+      if(u.special==='ayuntamiento'){
+        if(pool.includes(fijosPatrimonio.ayuntamientoTitular)) ag = commit(fijosPatrimonio.ayuntamientoTitular,'AYUNTAMIENTO');
+        else if(pool.includes(fijosPatrimonio.ayuntamientoBackup)) ag = commit(fijosPatrimonio.ayuntamientoBackup,'AYUNTAMIENTO');
+        else {
+          let cand = pool.filter(id=>!salaHab().includes(id));
+          if(!cand.length) cand = [...pool];
+          ag = chooseFair(cand, 'AYUNTAMIENTO');
+        }
+      } else if(u.special==='almudi'){
+        if(pool.includes(fijosPatrimonio.almudiTitular)) ag = commit(fijosPatrimonio.almudiTitular,'ALMUDI');
+        else {
+          let cand = pool.filter(id=>!salaHab().includes(id));
+          if(!cand.length) cand = [...pool];
+          ag = chooseFair(cand, 'ALMUDI');
+        }
+      } else if(u.special==='puerta'){
+        let cand;
+        if(tempActive){
+          cand = pool.filter(id=>salaHab().includes(id));
+          if(!cand.length) cand = [...pool];
+        } else {
+          cand = pool.filter(id=>!salaHab().includes(id));
+          if(!cand.length) cand = [...pool];
+        }
+        ag = chooseFair(cand, 'PUERTA');
+      } else if(u.restrictType){
+        const list = getRestrictList(u.restrictType);
+        const cand = pool.filter(id=>list.includes(id));
+        ag = chooseFair(cand, u.unitKey || unitKeyOrig);
+      } else {
+        ag = chooseFair([...pool], unitKeyOrig);
+      }
+      agents.push(ag || 'SIN CUBRIR');
+    }
+    assignments.push({unit:u.key, agents});
+  });
+
+  const pico = [...pool];
+  return {mandoPresentes, assignments, pico};
+}
+
+function buildWeekData(monday, weekType){
+  const sets = workingSetsForWeek(weekType);
+  const counts = {};
+  const doneMap = {};
+  const days = [];
+  DAY_NAMES.forEach((dayName, idx)=>{
+    const date = new Date(monday);
+    date.setDate(date.getDate()+idx);
+    if(!sets.mandodays.includes(dayName)){
+      days.push({dayName, date: isoDate(date), skip:true});
+      return;
+    }
+    const day = buildDay(dayName, sets, counts, doneMap, date);
+    days.push({
+      dayName,
+      date: isoDate(date),
+      skip:false,
+      mandoLabel: day.mandoPresentes.length ? day.mandoPresentes.map(id=>AGENTS[id].label).join(' · ') : 'Sin mando disponible (ausente)',
+      assignments: day.assignments,
+      pico: day.pico
+    });
+  });
+  const weekNum = getISOWeek(monday);
+  return {monday: isoDate(monday), weekNum, weekType, generatedAt: new Date().toISOString(), days};
+}
+
+function agentLabel(id){
+  if(id==='SIN CUBRIR') return null;
+  return AGENTS[id] ? AGENTS[id].label.split(' · ')[0] : id;
+}
+function renderResults(data){
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+
+  const mondayObj = new Date(data.monday + 'T00:00:00');
+  const sundayObj = new Date(mondayObj); sundayObj.setDate(sundayObj.getDate()+6);
+  const weekNum = data.weekNum || getISOWeek(mondayObj);
+  const header = document.createElement('div');
+  header.className = 'results-header';
+  header.innerHTML = `
+    <div class="week-num">Semana ${weekNum} · Fase ${data.weekType}</div>
+    <div class="range">${fmtDate(mondayObj)} — ${fmtDate(sundayObj)}</div>
+    <div class="range" style="margin-top:6px;">Si algún NO OPERATIVO cambia a media semana, ajusta su casilla arriba y usa "Regenerar desde aquí" en el día correspondiente: los días anteriores no se tocan.</div>
+  `;
+  container.appendChild(header);
+  document.getElementById('weekNav').style.display = 'flex';
+
+  data.days.forEach((d, dayIndex)=>{
+    const dateObj = new Date(d.date + 'T00:00:00');
+    const card = document.createElement('div');
+    card.className='day-card';
+    if(d.skip){
+      card.innerHTML = `
+        <div class="day-head">
+          <div class="d">${d.dayName} ${fmtDate(dateObj)}</div>
+          <div class="sys">sin servicio de mando este día</div>
+        </div>
+        <div class="skip-note">No se genera cuadrante: el sistema 4-3 (mando) no trabaja este día.</div>`;
+      container.appendChild(card);
+      return;
+    }
+    let rows = '';
+    d.assignments.forEach(a=>{
+      const names = a.agents.map(ag=>{
+        if(ag==='SIN CUBRIR') return '<span class="empty">SIN CUBRIR</span>';
+        return `<span class="agent">${agentLabel(ag)}</span>`;
+      }).join(', ');
+      rows += `<tr><td class="unit">${a.unit}</td><td>${names}</td></tr>`;
+    });
+    if(d.pico && d.pico.length){
+      rows += `<tr class="pico-row"><td class="unit">PICO</td><td>${d.pico.map(id=>agentLabel(id)).join(', ')}</td></tr>`;
+    }
+    card.innerHTML = `
+      <div class="day-head">
+        <div class="d">${d.dayName} ${fmtDate(dateObj)}</div>
+        <div class="sys">Mando: ${d.mandoLabel}</div>
+      </div>
+      <table>
+        <thead><tr><th>Unidad</th><th>Efectivo(s)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="footnote" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Fase ${data.weekType} · ${d.dayName}</span>
+        <button class="ghost regen-btn" type="button" data-idx="${dayIndex}" style="padding:5px 10px;font-size:11px;">Regenerar desde aquí</button>
+      </div>
+    `;
+    container.appendChild(card);
+    card.querySelector('.regen-btn').addEventListener('click', ()=>{
+      regenerateFromDay(data, dayIndex);
+    });
+  });
+  document.getElementById('resultsToolbar').style.display = 'flex';
+}
+
+function regenerateFromDay(data, dayIndex){
+  const sets = workingSetsForWeek(data.weekType);
+  const counts = {};
+  const doneMap = {};
+  for(let i=0;i<dayIndex;i++){
+    const d = data.days[i];
+    if(d.skip) continue;
+    d.assignments.forEach(a=>{
+      const uk = (a.unit.startsWith('Acompañante') || a.unit.startsWith('VCH')) ? 'ACOMP' : ((a.unit==='SALA 1'||a.unit==='SALA 2'||a.unit==='V CH') ? 'SALA' : a.unit);
+      a.agents.forEach(ag=>{
+        if(ag==='SIN CUBRIR') return;
+        counts[ag] = (counts[ag]||0) + 1;
+        if(!doneMap[ag]) doneMap[ag] = new Set();
+        doneMap[ag].add(uk);
+      });
+    });
+  }
+  const mondayObj = new Date(data.monday + 'T00:00:00');
+  for(let i=dayIndex;i<7;i++){
+    const dayName = DAY_NAMES[i];
+    const dateObj = new Date(mondayObj);
+    dateObj.setDate(dateObj.getDate()+i);
+    if(!sets.mandodays.includes(dayName)){
+      data.days[i] = {dayName, date: isoDate(dateObj), skip:true};
+      continue;
+    }
+    const day = buildDay(dayName, sets, counts, doneMap, dateObj);
+    data.days[i] = {
+      dayName,
+      date: isoDate(dateObj),
+      skip:false,
+      mandoLabel: day.mandoPresentes.length ? day.mandoPresentes.map(id=>AGENTS[id].label).join(' · ') : 'Sin mando disponible (ausente)',
+      assignments: day.assignments,
+      pico: day.pico
+    };
+  }
+  data.generatedAt = new Date().toISOString();
+  currentData = data;
+  renderResults(data);
+  document.getElementById('saveStatus').textContent = 'Regenerando desde ' + DAY_NAMES[dayIndex] + '...';
+  saveCurrentWeek(data);
+}
+
+let currentData = null;
+
+async function saveCurrentWeek(data){
+  try{
+    await appStorage.set('cuadrante:' + data.monday, JSON.stringify(data), false);
+    let indexRes = null;
+    try{ indexRes = await appStorage.get('cuadrante_index', false); }catch(e){}
+    let index = indexRes && indexRes.value ? JSON.parse(indexRes.value) : [];
+    if(!index.includes(data.monday)){
+      index.push(data.monday);
+      index.sort();
+      await appStorage.set('cuadrante_index', JSON.stringify(index), false);
+    }
+    document.getElementById('saveStatus').textContent = 'Guardado para revisión futura ✓';
+    loadHistory();
+  }catch(e){
+    document.getElementById('saveStatus').textContent = 'No se pudo guardar (error de almacenamiento)';
+    console.error(e);
+  }
+}
+
+async function loadHistory(){
+  try{
+    const indexRes = await appStorage.get('cuadrante_index', false);
+    const index = indexRes && indexRes.value ? JSON.parse(indexRes.value) : [];
+    const panel = document.getElementById('historyPanel');
+    const list = document.getElementById('historyList');
+    list.innerHTML = '';
+    if(!index.length){ panel.style.display='none'; return; }
+    panel.style.display='block';
+    index.slice().reverse().forEach(mondayIso=>{
+      const item = document.createElement('div');
+      item.className='history-item';
+      const dateObj = new Date(mondayIso + 'T00:00:00');
+      item.innerHTML = `<span>Semana del ${fmtDate(dateObj)}</span>`;
+      const openBtn = document.createElement('button');
+      openBtn.textContent = 'Ver';
+      openBtn.addEventListener('click', async ()=>{
+        const res = await appStorage.get('cuadrante:' + mondayIso, false);
+        if(res && res.value){
+          currentData = JSON.parse(res.value);
+          renderResults(currentData);
+          document.getElementById('saveStatus').textContent = 'Mostrando cuadrante guardado del ' + fmtDate(dateObj);
+          window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior:'smooth'});
+        }
+      });
+      const delBtn = document.createElement('button');
+      delBtn.className='del';
+      delBtn.textContent = 'Eliminar';
+      delBtn.addEventListener('click', async ()=>{
+        try{ await appStorage.delete('cuadrante:' + mondayIso, false); }catch(e){}
+        const newIndex = index.filter(x=>x!==mondayIso);
+        await appStorage.set('cuadrante_index', JSON.stringify(newIndex), false);
+        loadHistory();
+      });
+      item.appendChild(openBtn);
+      item.appendChild(delBtn);
+      list.appendChild(item);
+    });
+  }catch(e){ console.error(e); }
+}
+
+async function goToWeek(monday, autoGenerate){
+  document.getElementById('datePicker').value = isoDate(monday);
+  const info = updateWeekTag();
+  const mondayIso = isoDate(monday);
+  let res = null;
+  try{ res = await appStorage.get('cuadrante:' + mondayIso, false); }catch(e){}
+  if(res && res.value){
+    currentData = JSON.parse(res.value);
+    renderResults(currentData);
+    document.getElementById('saveStatus').textContent = 'Cuadrante guardado de la semana ' + (currentData.weekNum || info.weekNum);
+  } else if(autoGenerate){
+    currentData = buildWeekData(monday, info.weekType);
+    renderResults(currentData);
+    document.getElementById('saveStatus').textContent = 'Generando...';
+    saveCurrentWeek(currentData);
+  } else {
+    document.getElementById('results').innerHTML = '<div class="skip-note" style="padding:20px;">No hay cuadrante guardado para esta semana todavía. Pulsa "Generar cuadrante" para crearlo.</div>';
+    document.getElementById('resultsToolbar').style.display = 'none';
+    document.getElementById('weekNav').style.display = 'flex';
+  }
+}
+document.getElementById('prevWeekBtn').addEventListener('click', ()=>{
+  const base = currentData ? new Date(currentData.monday + 'T00:00:00') : new Date(document.getElementById('datePicker').value + 'T00:00:00');
+  base.setDate(base.getDate() - 7);
+  goToWeek(base, false);
+});
+document.getElementById('nextWeekBtn').addEventListener('click', ()=>{
+  const base = currentData ? new Date(currentData.monday + 'T00:00:00') : new Date(document.getElementById('datePicker').value + 'T00:00:00');
+  base.setDate(base.getDate() + 7);
+  goToWeek(base, true);
+});
+
+document.getElementById('genBtn').addEventListener('click', ()=>{
+  const info = updateWeekTag();
+  if(!info) return;
+  currentData = buildWeekData(info.monday, info.weekType);
+  renderResults(currentData);
+  document.getElementById('saveStatus').textContent = 'Generando...';
+  saveCurrentWeek(currentData);
+});
+document.getElementById('pdfBtn').addEventListener('click', ()=>{
+  window.print();
+});
+document.getElementById('jpgBtn').addEventListener('click', async ()=>{
+  const jpgBtn = document.getElementById('jpgBtn');
+  const original = jpgBtn.textContent;
+  jpgBtn.textContent = 'Generando...';
+  jpgBtn.disabled = true;
+  try{
+    const target = document.getElementById('results');
+    const canvas = await html2canvas(target, {backgroundColor:'#0f141b', scale:2});
+    const link = document.createElement('a');
+    const label = currentData ? ('cuadrante_semana_' + (currentData.weekNum||'') + '_' + currentData.monday) : 'cuadrante';
+    link.download = label + '.jpg';
+    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.click();
+  }catch(e){
+    console.error(e);
+    alert('No se pudo generar la imagen. Prueba con "Generar PDF" como alternativa.');
+  }
+  jpgBtn.textContent = original;
+  jpgBtn.disabled = false;
+});
+
+// ---------- CONFIGURACION: prioridad de unidades y habilitados (persistentes) ----------
+async function loadConfig(){
+  try{
+    const res = await appStorage.get('unit_defs', false);
+    if(res && res.value) UNIT_DEFS = JSON.parse(res.value);
+  }catch(e){}
+  try{
+    const res = await appStorage.get('unit_priority', false);
+    if(res && res.value){
+      const saved = JSON.parse(res.value);
+      unitPriority = saved.filter(k=>UNIT_DEFS[k]);
+    }
+  }catch(e){}
+  try{
+    const res = await appStorage.get('habilitados_sala', false);
+    if(res && res.value) habilitadosSala = JSON.parse(res.value);
+  }catch(e){}
+  try{
+    const res = await appStorage.get('habilitados_luna', false);
+    if(res && res.value) habilitadosLuna = JSON.parse(res.value);
+  }catch(e){}
+  try{
+    const res = await appStorage.get('fijos_patrimonio', false);
+    if(res && res.value) fijosPatrimonio = Object.assign({}, fijosPatrimonio, JSON.parse(res.value));
+  }catch(e){}
+  try{
+    const res = await appStorage.get('preferred_pairs', false);
+    if(res && res.value) preferredPairs = JSON.parse(res.value);
+  }catch(e){}
+}
+async function saveUnitPriority(){
+  try{ await appStorage.set('unit_priority', JSON.stringify(unitPriority), false); }catch(e){ console.error(e); }
+}
+async function saveUnitDefs(){
+  try{ await appStorage.set('unit_defs', JSON.stringify(UNIT_DEFS), false); }catch(e){ console.error(e); }
+}
+async function saveHabilitadosSala(){
+  try{ await appStorage.set('habilitados_sala', JSON.stringify(habilitadosSala), false); }catch(e){ console.error(e); }
+}
+async function saveHabilitadosLuna(){
+  try{ await appStorage.set('habilitados_luna', JSON.stringify(habilitadosLuna), false); }catch(e){ console.error(e); }
+}
+async function saveFijosPatrimonio(){
+  try{ await appStorage.set('fijos_patrimonio', JSON.stringify(fijosPatrimonio), false); }catch(e){ console.error(e); }
+}
+async function savePreferredPairs(){
+  try{ await appStorage.set('preferred_pairs', JSON.stringify(preferredPairs), false); }catch(e){ console.error(e); }
+}
+
+// ---------- MODAL ----------
+const modalOverlay = document.getElementById('modalOverlay');
+const modalBody = document.getElementById('modalBody');
+let modalMode = null; // 'units' | 'sala' | 'luna' | 'patrimonio'
+let modalUnitsDraft = [];
+let modalUnitDefsDraft = {};
+let modalHabDraft = new Set();
+
+function closeModal(){ modalOverlay.style.display = 'none'; modalMode = null; }
+document.getElementById('modalClose').addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', e=>{ if(e.target === modalOverlay) closeModal(); });
+
+function renderUnitsModal(){
+  modalMode = 'units';
+  modalUnitsDraft = [...unitPriority];
+  modalUnitDefsDraft = JSON.parse(JSON.stringify(UNIT_DEFS));
+  document.getElementById('modalTitle').textContent = 'Unidades y orden de prioridad';
+  document.getElementById('modalHint').textContent = 'Se reparten en este orden mientras haya efectivos disponibles.';
+  drawUnitsList();
+  modalOverlay.style.display = 'flex';
+}
+function drawUnitsList(){
+  modalBody.innerHTML = '';
+  const list = document.createElement('div');
+  modalUnitsDraft.forEach((key, i)=>{
+    const def = modalUnitDefsDraft[key] || {label:key, count:1};
+    const row = document.createElement('div');
+    row.className = 'unit-row';
+    row.innerHTML = `
+      <span><span class="idx">${i+1}.</span>${def.label}${def.count?` <span class="sub">(${def.count} efectivo${def.count>1?'s':''})</span>`:''}</span>
+      <span class="arrows">
+        <button type="button" data-dir="up" data-i="${i}">▲</button>
+        <button type="button" data-dir="down" data-i="${i}">▼</button>
+        <button type="button" class="del" data-del="${i}">Eliminar</button>
+      </span>`;
+    list.appendChild(row);
+  });
+  modalBody.appendChild(list);
+  list.querySelectorAll('button[data-dir]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i, 10);
+      const dir = btn.dataset.dir;
+      const j = dir === 'up' ? i-1 : i+1;
+      if(j<0 || j>=modalUnitsDraft.length) return;
+      [modalUnitsDraft[i], modalUnitsDraft[j]] = [modalUnitsDraft[j], modalUnitsDraft[i]];
+      drawUnitsList();
+    });
+  });
+  list.querySelectorAll('button[data-del]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.del, 10);
+      modalUnitsDraft.splice(i, 1);
+      drawUnitsList();
+    });
+  });
+
+  const addRow = document.createElement('div');
+  addRow.style.cssText = 'margin-top:14px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+  addRow.innerHTML = `
+    <input type="text" id="newUnitName" placeholder="Nombre de la nueva unidad" style="flex:1;min-width:150px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
+    <input type="number" id="newUnitCount" value="1" min="1" max="4" style="width:60px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
+    <button type="button" id="addUnitBtn" class="secondary" style="padding:8px 14px;font-size:12.5px;">+ Añadir unidad</button>
+  `;
+  modalBody.appendChild(addRow);
+  document.getElementById('addUnitBtn').addEventListener('click', ()=>{
+    const nameInput = document.getElementById('newUnitName');
+    const countInput = document.getElementById('newUnitCount');
+    const name = nameInput.value.trim().toUpperCase();
+    if(!name) return;
+    let key = name, suffix = 2;
+    while(modalUnitDefsDraft[key]){ key = name + ' ' + suffix; suffix++; }
+    const count = Math.max(1, Math.min(4, parseInt(countInput.value,10) || 1));
+    modalUnitDefsDraft[key] = {count, label:name};
+    modalUnitsDraft.push(key);
+    drawUnitsList();
+  });
+}
+
+function renderHabilitadosModal(type){
+  modalMode = type; // 'sala' | 'luna'
+  const current = type==='sala' ? habilitadosSala : habilitadosLuna;
+  modalHabDraft = new Set(current);
+  document.getElementById('modalTitle').textContent = type==='sala' ? 'Habilitados SALA / V CH' : 'Habilitados LUNA';
+  document.getElementById('modalHint').textContent = type==='sala'
+    ? 'Nota: 791 nunca puede hacer SALA 1 aunque esté marcado aquí.'
+    : 'Solo estos agentes pueden cubrir la unidad LUNA.';
+  drawHabGrid();
+  modalOverlay.style.display = 'flex';
+}
+function drawHabGrid(){
+  modalBody.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'hab-grid';
+  ALL_RANGO_IDS.forEach(id=>{
+    const on = modalHabDraft.has(id);
+    const chip = document.createElement('label');
+    chip.className = 'hab-chip' + (on ? ' on' : '');
+    chip.innerHTML = `<input type="checkbox" ${on?'checked':''} data-id="${id}"> ${AGENTS[id].label}`;
+    chip.querySelector('input').addEventListener('change', e=>{
+      if(e.target.checked) modalHabDraft.add(id); else modalHabDraft.delete(id);
+      chip.classList.toggle('on', e.target.checked);
+    });
+    grid.appendChild(chip);
+  });
+  modalBody.appendChild(grid);
+}
+
+let modalPatrimonioDraft = null;
+
+function singleSelectGrid(container, ids, currentValue, onPick){
+  const grid = document.createElement('div');
+  grid.className = 'hab-grid';
+  ids.forEach(id=>{
+    const on = id === currentValue;
+    const chip = document.createElement('label');
+    chip.className = 'hab-chip' + (on ? ' on' : '');
+    chip.innerHTML = `<input type="radio" ${on?'checked':''}> ${AGENTS[id].label}`;
+    chip.querySelector('input').addEventListener('change', ()=>{
+      onPick(id);
+    });
+    grid.appendChild(chip);
+  });
+  container.appendChild(grid);
+}
+
+function renderPatrimonioModal(){
+  modalMode = 'patrimonio';
+  modalPatrimonioDraft = Object.assign({}, fijosPatrimonio);
+  document.getElementById('modalTitle').textContent = 'Fijos Patrimonio';
+  document.getElementById('modalHint').textContent = 'PUERTA no tiene fijo: la cubre cualquier efectivo disponible.';
+  drawPatrimonioForm();
+  modalOverlay.style.display = 'flex';
+}
+function drawPatrimonioForm(){
+  modalBody.innerHTML = '';
+
+  const t1 = document.createElement('div');
+  t1.className = 'group-title';
+  t1.textContent = 'Titular fijo AYUNTAMIENTO';
+  modalBody.appendChild(t1);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS, modalPatrimonioDraft.ayuntamientoTitular, id=>{
+    modalPatrimonioDraft.ayuntamientoTitular = id; drawPatrimonioForm();
+  });
+
+  const t2 = document.createElement('div');
+  t2.className = 'group-title';
+  t2.style.marginTop = '16px';
+  t2.textContent = 'Backup AYUNTAMIENTO (si el titular no está disponible)';
+  modalBody.appendChild(t2);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS, modalPatrimonioDraft.ayuntamientoBackup, id=>{
+    modalPatrimonioDraft.ayuntamientoBackup = id; drawPatrimonioForm();
+  });
+
+  const t3 = document.createElement('div');
+  t3.className = 'group-title';
+  t3.style.marginTop = '16px';
+  t3.textContent = 'Titular fijo ALMUDI';
+  modalBody.appendChild(t3);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS, modalPatrimonioDraft.almudiTitular, id=>{
+    modalPatrimonioDraft.almudiTitular = id; drawPatrimonioForm();
+  });
+
+  const t4 = document.createElement('div');
+  t4.className = 'group-title';
+  t4.style.marginTop = '16px';
+  t4.textContent = 'PUERTA';
+  modalBody.appendChild(t4);
+  const note = document.createElement('div');
+  note.className = 'sub';
+  note.textContent = 'Sin fijo: la puede hacer cualquier efectivo disponible ese día.';
+  modalBody.appendChild(note);
+}
+
+// ---------- MODAL: BASE DE DATOS ----------
+function renderDbModal(){
+  modalMode = 'db';
+  const cfg = getSupabaseConfig();
+  document.getElementById('modalTitle').textContent = 'Base de datos compartida (Supabase)';
+  document.getElementById('modalHint').textContent = supabaseClient ? 'Conectado ✓' : 'Sin conectar: usando almacenamiento solo local de este navegador.';
+  modalBody.innerHTML = `
+    <p class="sub" style="margin-top:0;">Conecta un proyecto gratuito de Supabase para que todos los que abran esta web (desde cualquier dispositivo) vean y editen el mismo cuadrante, ausencias y configuración.</p>
+    <label>URL del proyecto</label><br>
+    <input type="text" id="sbUrl" placeholder="https://xxxxx.supabase.co" value="${cfg.url}" style="width:100%;margin:6px 0 14px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
+    <label>Clave anon public</label><br>
+    <input type="text" id="sbKey" placeholder="eyJhbGciOi..." value="${cfg.key}" style="width:100%;margin:6px 0 14px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
+    <p class="sub">Estas dos claves se guardan en este navegador (no son secretas, están pensadas para uso público en el cliente). Pídeselas a quien haya creado el proyecto en supabase.com.</p>
+  `;
+  modalOverlay.style.display = 'flex';
+}
+
+// ---------- MODAL: PAREJAS PREFERENTES ----------
+let modalPairsDraft = [];
+let modalPairNewDays = new Set();
+
+function renderPairsModal(){
+  modalMode = 'pairs';
+  modalPairsDraft = JSON.parse(JSON.stringify(preferredPairs));
+  modalPairNewDays = new Set();
+  document.getElementById('modalTitle').textContent = 'Parejas preferentes';
+  document.getElementById('modalHint').textContent = 'Se colocan juntos en la misma unidad (de 2 efectivos) los días marcados, si ambos trabajan y hay hueco.';
+  drawPairsModal();
+  modalOverlay.style.display = 'flex';
+}
+
+function drawPairsModal(){
+  modalBody.innerHTML = '';
+
+  if(modalPairsDraft.length){
+    const t = document.createElement('div');
+    t.className = 'group-title';
+    t.textContent = 'Parejas configuradas';
+    modalBody.appendChild(t);
+    modalPairsDraft.forEach((p, i)=>{
+      const row = document.createElement('div');
+      row.className = 'unit-row';
+      row.innerHTML = `
+        <span>${AGENTS[p.a] ? AGENTS[p.a].label : p.a} + ${AGENTS[p.b] ? AGENTS[p.b].label : p.b}
+          <span class="sub"> · ${p.days.join(', ')}</span></span>
+        <span class="arrows"><button type="button" class="del" data-delpair="${i}">Eliminar</button></span>`;
+      modalBody.appendChild(row);
+    });
+    modalBody.querySelectorAll('button[data-delpair]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        modalPairsDraft.splice(parseInt(btn.dataset.delpair,10), 1);
+        drawPairsModal();
+      });
+    });
+  }
+
+  const t2 = document.createElement('div');
+  t2.className = 'group-title';
+  t2.style.marginTop = '18px';
+  t2.textContent = 'Nueva pareja · Agente 1';
+  modalBody.appendChild(t2);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS, newPairA, id=>{ newPairA = id; drawPairsModal(); });
+
+  const t3 = document.createElement('div');
+  t3.className = 'group-title';
+  t3.style.marginTop = '16px';
+  t3.textContent = 'Agente 2';
+  modalBody.appendChild(t3);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS.filter(id=>id!==newPairA), newPairB, id=>{ newPairB = id; drawPairsModal(); });
+
+  const t4 = document.createElement('div');
+  t4.className = 'group-title';
+  t4.style.marginTop = '16px';
+  t4.textContent = 'Días en que deben ir juntos';
+  modalBody.appendChild(t4);
+  const dayGrid = document.createElement('div');
+  dayGrid.className = 'hab-grid';
+  DAY_NAMES.forEach(day=>{
+    const on = modalPairNewDays.has(day);
+    const chip = document.createElement('label');
+    chip.className = 'hab-chip' + (on ? ' on' : '');
+    chip.innerHTML = `<input type="checkbox" ${on?'checked':''}> ${day}`;
+    chip.querySelector('input').addEventListener('change', e=>{
+      if(e.target.checked) modalPairNewDays.add(day); else modalPairNewDays.delete(day);
+      chip.classList.toggle('on', e.target.checked);
+    });
+    dayGrid.appendChild(chip);
+  });
+  modalBody.appendChild(dayGrid);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'secondary';
+  addBtn.style.cssText = 'margin-top:16px;padding:8px 14px;font-size:12.5px;';
+  addBtn.textContent = '+ Añadir pareja';
+  addBtn.addEventListener('click', ()=>{
+    if(!newPairA || !newPairB || newPairA===newPairB || !modalPairNewDays.size) return;
+    modalPairsDraft.push({a:newPairA, b:newPairB, days:[...modalPairNewDays]});
+    newPairA = null; newPairB = null; modalPairNewDays = new Set();
+    drawPairsModal();
+  });
+  modalBody.appendChild(addBtn);
+}
+let newPairA = null, newPairB = null;
+
+document.getElementById('ajustesBtn').addEventListener('click', ()=>{
+  const panel = document.getElementById('ajustesPanel');
+  panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+});
+
+document.getElementById('unitsBtn').addEventListener('click', renderUnitsModal);
+document.getElementById('lunaBtn').addEventListener('click', ()=>renderHabilitadosModal('luna'));
+document.getElementById('salaBtn').addEventListener('click', ()=>renderHabilitadosModal('sala'));
+document.getElementById('patrimonioBtn').addEventListener('click', renderPatrimonioModal);
+document.getElementById('pairsBtn').addEventListener('click', renderPairsModal);
+document.getElementById('dbBtn').addEventListener('click', renderDbModal);
+
+document.getElementById('modalSave').addEventListener('click', async ()=>{
+  if(modalMode === 'units'){
+    unitPriority = [...modalUnitsDraft];
+    UNIT_DEFS = modalUnitDefsDraft;
+    await saveUnitPriority();
+    await saveUnitDefs();
+  } else if(modalMode === 'sala'){
+    habilitadosSala = [...modalHabDraft];
+    await saveHabilitadosSala();
+  } else if(modalMode === 'luna'){
+    habilitadosLuna = [...modalHabDraft];
+    await saveHabilitadosLuna();
+  } else if(modalMode === 'patrimonio'){
+    fijosPatrimonio = Object.assign({}, modalPatrimonioDraft);
+    await saveFijosPatrimonio();
+  } else if(modalMode === 'pairs'){
+    preferredPairs = JSON.parse(JSON.stringify(modalPairsDraft));
+    await savePreferredPairs();
+  } else if(modalMode === 'db'){
+    const url = document.getElementById('sbUrl').value.trim();
+    const key = document.getElementById('sbKey').value.trim();
+    localStorage.setItem('cuadrante_sb_url', url);
+    localStorage.setItem('cuadrante_sb_key', key);
+    initSupabase();
+    await checkAuthAndStart();
+  }
+  closeModal();
+});
+
+// ---------- AUTENTICACIÓN (solo aplica si hay Supabase conectado y no estamos dentro de Claude) ----------
+let currentUser = null;
+const authOverlay = document.getElementById('authOverlay');
+
+function authRequired(){
+  return !window.storage && !!supabaseClient;
+}
+function showAuthMsg(text, isError){
+  const el = document.getElementById('authMsg');
+  el.textContent = text;
+  el.style.color = isError ? 'var(--red)' : '';
+}
+function showLogin(){
+  authOverlay.style.display = 'flex';
+}
+function hideLogin(){
+  authOverlay.style.display = 'none';
+}
+function updateUserBadge(){
+  const badge = document.getElementById('userBadge');
+  const logoutBtn = document.getElementById('logoutBtn');
+  if(currentUser){
+    badge.textContent = currentUser.email;
+    badge.style.display = 'inline';
+    logoutBtn.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+    logoutBtn.style.display = 'none';
+  }
+}
+
+document.getElementById('authLoginBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('authEmail').value.trim();
+  const pass = document.getElementById('authPass').value;
+  if(!email || !pass){ showAuthMsg('Rellena email y contraseña.', true); return; }
+  showAuthMsg('Entrando...');
+  const {data, error} = await supabaseClient.auth.signInWithPassword({email, password:pass});
+  if(error){ showAuthMsg(error.message, true); return; }
+  currentUser = data.user;
+  hideLogin();
+  updateUserBadge();
+  await startApp();
+});
+document.getElementById('authSignupBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('authEmail').value.trim();
+  const pass = document.getElementById('authPass').value;
+  if(!email || !pass){ showAuthMsg('Rellena email y contraseña.', true); return; }
+  if(pass.length < 6){ showAuthMsg('La contraseña debe tener al menos 6 caracteres.', true); return; }
+  showAuthMsg('Creando cuenta...');
+  const {data, error} = await supabaseClient.auth.signUp({email, password:pass});
+  if(error){ showAuthMsg(error.message, true); return; }
+  if(data.session){
+    currentUser = data.user;
+    hideLogin();
+    updateUserBadge();
+    await startApp();
+  } else {
+    showAuthMsg('Cuenta creada. Revisa tu email para confirmar el acceso y luego pulsa "Entrar".');
+  }
+});
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  if(supabaseClient) await supabaseClient.auth.signOut();
+  currentUser = null;
+  updateUserBadge();
+  showLogin();
+});
+
+async function checkAuthAndStart(){
+  if(!authRequired()){
+    await startApp();
+    return;
+  }
+  const {data} = await supabaseClient.auth.getSession();
+  if(data && data.session){
+    currentUser = data.session.user;
+    updateUserBadge();
+    await startApp();
+  } else {
+    showLogin();
+  }
+}
+
+async function startApp(){
+  await loadConfig();
+  loadAbsences();
+  updateWeekTag();
+  loadHistory();
+}
+
+async function init(){
+  initSupabase();
+  await checkAuthAndStart();
+}
+init();
+</script>
+</body>
+</html>
