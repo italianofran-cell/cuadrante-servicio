@@ -110,6 +110,28 @@ input[type=date]{
 .taser-tag{color:#4f9fe0;font-weight:700;font-size:10.5px;margin-left:6px;}
 /* Modal ancho (historiales) */
 .modal-box.wide{max-width:1100px;width:96vw;}
+/* Gráfica de equidad (historial agentes) */
+.hist-chart{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line);}
+.hist-chart-head{font-family:var(--font-display);font-weight:600;color:var(--text);font-size:13px;margin-bottom:10px;}
+.hist-chart-head .avg{color:var(--muted);font-weight:500;font-size:11.5px;}
+.hist-row{display:grid;grid-template-columns:130px 1fr 34px;align-items:center;gap:8px;margin-bottom:4px;}
+.hist-row-label{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hist-row-track{position:relative;height:13px;background:var(--panel-2);border-radius:3px;}
+.hist-row-fill{position:absolute;left:0;top:0;bottom:0;background:var(--cyan);border-radius:0 3px 3px 0;min-width:2px;}
+.hist-row-avgtick{position:absolute;top:0;bottom:0;width:1px;background:var(--muted);opacity:.75;}
+.hist-row-value{font-size:11px;color:var(--text);text-align:right;font-family:var(--font-mono);}
+/* Calendario anual de ausencias */
+.cal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
+.cal-month{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
+.cal-month-name{font-family:var(--font-display);font-weight:600;font-size:12.5px;color:var(--amber);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:2px;}
+.cal-dow span{font-size:9.5px;color:var(--muted);text-align:center;}
+.cal-days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text);border-radius:4px;font-family:var(--font-mono);}
+.cal-day.empty{visibility:hidden;}
+.cal-day.today{outline:1px solid var(--cyan);outline-offset:-1px;}
+.cal-day.one{background:rgba(232,195,63,.22);color:#f0dfa0;}
+.cal-day.many{background:rgba(226,87,76,.32);color:#f5b3ad;font-weight:700;}
 button{
   font-family:var(--font-display);
   font-weight:600;
@@ -317,6 +339,7 @@ tr:last-child td{border-bottom:none;}
   body.print-modal th{color:#000;font-weight:700;font-size:8.5px;}
   body.print-modal .unit{color:#000;}
   body.print-modal .pico-row .unit{color:#000;}
+  body.print-modal .hist-chart{display:none;}
   /* Todo en un único folio: días sin servicio ocultos y días en 2 columnas */
   #results{position:absolute;left:0;top:0;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:3mm;align-items:start;}
   .noprint{display:none !important;}
@@ -370,6 +393,7 @@ tr:last-child td{border-bottom:none;}
     <button class="secondary" id="namesBtn" type="button">Nombres de agentes</button>
     <button class="secondary" id="histBtn" type="button">Historial agentes</button>
     <button class="secondary" id="tiroHistBtn" type="button">Historial tiro/táser</button>
+    <button class="secondary" id="calendarBtn" type="button">Calendario ausencias</button>
   </div>
 
   <div id="authOverlay" class="modal-overlay" style="display:none;">
@@ -1278,6 +1302,21 @@ function setAgentAt(r, id){
   const d = currentData.days[r.day];
   if(r.pico !== null) d.pico[r.pico] = id; else d.assignments[r.ai].agents[r.slot] = id;
 }
+function incompatWarningsAt(r, dayName){
+  if(r.pico !== null) return [];
+  const d = currentData.days[r.day];
+  const a = d.assignments[r.ai];
+  const agents = a.agents.filter(x=>x && x!=='SIN CUBRIR');
+  const warns = [];
+  for(let i=0;i<agents.length;i++){
+    for(let j=i+1;j<agents.length;j++){
+      if(isIncompatible(agents[i], agents[j], dayName)){
+        warns.push(`${a.unit}: ${agentLabel(agents[i])} y ${agentLabel(agents[j])}`);
+      }
+    }
+  }
+  return warns;
+}
 function doSwap(r1, r2){
   if(sameRef(r1, r2)) return;
   const a1 = getAgentAt(r1), a2 = getAgentAt(r2);
@@ -1285,8 +1324,19 @@ function doSwap(r1, r2){
   setAgentAt(r2, a1);
   currentData.generatedAt = new Date().toISOString();
   renderResults(currentData);
+  const dayName = currentData.days[r1.day].dayName;
+  const seenUnits = new Set();
+  const warns = [];
+  [r1, r2].forEach(r=>{
+    if(r.pico !== null || seenUnits.has(r.ai)) return;
+    seenUnits.add(r.ai);
+    warns.push(...incompatWarningsAt(r, dayName));
+  });
   document.getElementById('saveStatus').textContent = 'Intercambio manual: ' + agentLabel(a1) + ' ⇄ ' + agentLabel(a2);
   saveCurrentWeek(currentData);
+  if(warns.length){
+    alert('⚠️ Este intercambio deja una pareja incompatible en la misma unidad:\n\n' + warns.join('\n'));
+  }
 }
 const resultsEl = document.getElementById('results');
 resultsEl.addEventListener('click', e=>{
@@ -2101,22 +2151,36 @@ async function renderHistAgentesModal(){
   }
   document.getElementById('modalPdfBtn').style.display = '';
 
+  const totals = ALL_RANGO_IDS.map(id=>{
+    const row = acc[id] || {};
+    const total = cols.reduce((s,u)=>s + (row[u]||0), 0);
+    return {id, total};
+  });
+  const avg = totals.reduce((s,t)=>s+t.total, 0) / (totals.length || 1);
+  const maxTotal = Math.max(1, ...totals.map(t=>t.total));
+  const avgPct = Math.min(100, (avg / maxTotal) * 100);
+
+  let chartHtml = `<div class="hist-chart"><div class="hist-chart-head">Total de servicios por agente <span class="avg">· media ${avg.toFixed(1)}</span></div>`;
+  [...totals].sort((a,b)=>b.total-a.total).forEach(t=>{
+    const pct = (t.total / maxTotal) * 100;
+    chartHtml += `<div class="hist-row"><span class="hist-row-label">${agentLabel(t.id)}</span><div class="hist-row-track"><div class="hist-row-fill" style="width:${pct}%"></div><div class="hist-row-avgtick" style="left:${avgPct}%" title="Media: ${avg.toFixed(1)}"></div></div><span class="hist-row-value">${t.total}</span></div>`;
+  });
+  chartHtml += '</div>';
+
   let html = '<div style="overflow-x:auto;"><table style="font-size:11.5px;"><thead><tr><th>Agente</th>';
   cols.forEach(u=>{ html += `<th>${u}</th>`; });
   html += '<th>Total</th></tr></thead><tbody>';
-  ALL_RANGO_IDS.forEach(id=>{
+  ALL_RANGO_IDS.forEach((id,i)=>{
     const row = acc[id] || {};
-    let total = 0;
     let cells = '';
     cols.forEach(u=>{
       const n = row[u] || 0;
-      total += n;
       cells += `<td style="text-align:center;">${n || '—'}</td>`;
     });
-    html += `<tr><td class="unit">${agentLabel(id)}</td>${cells}<td style="text-align:center;font-weight:600;">${total}</td></tr>`;
+    html += `<tr><td class="unit">${agentLabel(id)}</td>${cells}<td style="text-align:center;font-weight:600;">${totals[i].total}</td></tr>`;
   });
   html += '</tbody></table></div>';
-  modalBody.innerHTML = html;
+  modalBody.innerHTML = chartHtml + html;
 }
 
 // ---------- MODAL: HISTORIAL TIRO / TÁSER ----------
@@ -2159,6 +2223,67 @@ async function renderTiroHistModal(){
   modalBody.innerHTML = thtml;
 }
 
+// ---------- MODAL: CALENDARIO DE AUSENCIAS ----------
+let calYear = new Date().getFullYear();
+const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function renderCalendarModal(){
+  modalMode = 'calendar';
+  document.getElementById('modalTitle').textContent = 'Calendario de ausencias';
+  document.getElementById('modalHint').textContent = 'Días con alguna ausencia programada. Dos o más agentes ausentes el mismo día se resaltan en rojo.';
+  document.getElementById('modalSave').style.display = 'none';
+  modalOverlay.querySelector('.modal-box').classList.add('wide');
+  modalOverlay.style.display = 'flex';
+  drawCalendarModal();
+}
+function drawCalendarModal(){
+  const ids = Object.keys(agentStatus);
+  const hoy = isoDate(new Date());
+
+  let html = `<div class="row" style="margin-bottom:14px;align-items:center;">
+    <button class="ghost" id="calPrevYear" type="button">◀</button>
+    <span class="week-tag" style="min-width:70px;text-align:center;">${calYear}</span>
+    <button class="ghost" id="calNextYear" type="button">▶</button>
+  </div>`;
+  html += '<div class="cal-grid">';
+  for(let m=0; m<12; m++){
+    html += `<div class="cal-month"><div class="cal-month-name">${MONTH_NAMES[m]}</div><div class="cal-dow">`;
+    ['L','M','X','J','V','S','D'].forEach(d=>{ html += `<span>${d}</span>`; });
+    html += '</div><div class="cal-days">';
+    const first = new Date(calYear, m, 1);
+    const leading = (first.getDay() + 6) % 7; // lunes=0
+    for(let i=0;i<leading;i++) html += '<span class="cal-day empty"></span>';
+    const daysInMonth = new Date(calYear, m+1, 0).getDate();
+    for(let day=1; day<=daysInMonth; day++){
+      const dateObj = new Date(calYear, m, day);
+      const iso = isoDate(dateObj);
+      const absentIds = ids.filter(id=>isAbsentOn(id, dateObj));
+      let cls = 'cal-day';
+      if(iso === hoy) cls += ' today';
+      if(absentIds.length === 1) cls += ' one';
+      else if(absentIds.length >= 2) cls += ' many';
+      const title = absentIds.length ? absentIds.map(id=>agentLabel(id)).join(', ') : '';
+      html += `<span class="${cls}"${title ? ` title="${title.replace(/"/g,'&quot;')}"` : ''}>${day}</span>`;
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
+
+  const entries = ids.map(id=>({id, e: agentStatus[id]})).filter(x=>x.e).sort((a,b)=>a.e.desde.localeCompare(b.e.desde));
+  if(entries.length){
+    html += '<div style="margin-top:18px;"><div class="group-title">Ausencias registradas</div>';
+    entries.forEach(({id,e})=>{
+      html += `<div class="unit-row"><span>${agentLabel(id)} <span class="sub">desde ${fmtShort(e.desde)}${e.vuelve ? ' hasta ' + fmtShort(e.vuelve) : ' · sin fecha de vuelta'}</span></span></div>`;
+    });
+    html += '</div>';
+  } else {
+    html += '<p class="sub" style="margin-top:14px;">No hay ninguna ausencia registrada.</p>';
+  }
+
+  modalBody.innerHTML = html;
+  document.getElementById('calPrevYear').addEventListener('click', ()=>{ calYear--; drawCalendarModal(); });
+  document.getElementById('calNextYear').addEventListener('click', ()=>{ calYear++; drawCalendarModal(); });
+}
+
 document.getElementById('ajustesBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('ajustesPanel');
   panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
@@ -2174,6 +2299,7 @@ document.getElementById('limitadosBtn').addEventListener('click', ()=>renderHabi
 document.getElementById('namesBtn').addEventListener('click', renderNamesModal);
 document.getElementById('histBtn').addEventListener('click', renderHistAgentesModal);
 document.getElementById('tiroHistBtn').addEventListener('click', renderTiroHistModal);
+document.getElementById('calendarBtn').addEventListener('click', renderCalendarModal);
 document.getElementById('dbBtn').addEventListener('click', renderPastModal);
 
 document.getElementById('modalSave').addEventListener('click', async ()=>{
