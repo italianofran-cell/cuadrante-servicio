@@ -358,6 +358,22 @@ tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
+  <div id="returnOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box" style="max-width:380px;">
+      <div class="modal-head"><span>¿Sabes cuándo vuelve?</span></div>
+      <div class="modal-body">
+        <p class="sub" style="margin-top:0;" id="returnAgentLabel"></p>
+        <label>Fecha de incorporación</label><br>
+        <input type="date" id="returnDate" style="width:100%;margin:6px 0 16px;">
+        <div class="row">
+          <button id="returnSaveBtn" type="button">Guardar fecha</button>
+          <button class="secondary" id="returnUnknownBtn" type="button">NO LO SÉ</button>
+          <button class="ghost" id="returnCancelBtn" type="button">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="modalOverlay" class="modal-overlay" style="display:none;">
     <div class="modal-box">
       <div class="modal-head">
@@ -386,6 +402,10 @@ tr:last-child td{border-bottom:none;}
   <div class="panel">
     <h2>No operativos esta semana</h2>
     <div id="groups" class="groups"></div>
+    <div id="incorporaciones" style="display:none;margin-top:16px;border-top:1px solid var(--line);padding-top:14px;">
+      <div class="group-title">Próximas incorporaciones</div>
+      <div id="incorporacionesList"></div>
+    </div>
     <div class="row" style="margin-top:14px;">
       <span class="sub" id="absCount"></span>
     </div>
@@ -573,17 +593,85 @@ const appStorage = {
   }
 };
 
+// Fechas de incorporación de los no operativos: {agentId: 'YYYY-MM-DD'}.
+// A partir de esa fecha el agente vuelve a contar como operativo.
+let absentReturns = {};
+
+function isAbsentOn(id, dateObj){
+  if(!absentSet.has(id)) return false;
+  const r = absentReturns[id];
+  if(r && dateObj && isoDate(dateObj) >= r) return false; // ya se ha incorporado ese día
+  return true;
+}
+
 async function loadAbsences(){
   try{
     const res = await appStorage.get('absentees', false);
     if(res && res.value) absentSet = new Set(JSON.parse(res.value));
   }catch(e){}
+  try{
+    const res = await appStorage.get('absent_returns', false);
+    if(res && res.value) absentReturns = JSON.parse(res.value);
+  }catch(e){}
+  // Si la fecha de incorporación ya ha llegado, el agente deja de figurar como NO OPERATIVO
+  const hoy = isoDate(new Date());
+  let cambios = false;
+  Object.keys(absentReturns).forEach(id=>{
+    if(absentReturns[id] <= hoy){
+      absentSet.delete(id);
+      delete absentReturns[id];
+      cambios = true;
+    }
+  });
+  if(cambios) saveAbsences();
   renderGroups();
 }
 async function saveAbsences(){
-  try{ await appStorage.set('absentees', JSON.stringify([...absentSet]), false); }
+  try{
+    await appStorage.set('absentees', JSON.stringify([...absentSet]), false);
+    await appStorage.set('absent_returns', JSON.stringify(absentReturns), false);
+  }
   catch(e){ console.error('No se pudo guardar', e); }
 }
+
+// ---------- DIÁLOGO "¿SABES CUÁNDO VUELVE?" ----------
+let pendingReturnId = null;
+const returnOverlay = document.getElementById('returnOverlay');
+
+function askReturnDate(id){
+  pendingReturnId = id;
+  document.getElementById('returnAgentLabel').textContent =
+    labelOf(id) + ' queda como NO OPERATIVO. Si sabes su fecha de incorporación, márcala; a partir de ese día volverá a entrar en el reparto automáticamente.';
+  document.getElementById('returnDate').value = '';
+  returnOverlay.style.display = 'flex';
+}
+function closeReturnDialog(){
+  returnOverlay.style.display = 'none';
+  pendingReturnId = null;
+}
+document.getElementById('returnUnknownBtn').addEventListener('click', ()=>{
+  if(pendingReturnId){ delete absentReturns[pendingReturnId]; }
+  saveAbsences();
+  closeReturnDialog();
+  renderGroups();
+});
+document.getElementById('returnSaveBtn').addEventListener('click', ()=>{
+  const val = document.getElementById('returnDate').value;
+  if(!val){ alert('Elige una fecha de incorporación o pulsa "NO LO SÉ".'); return; }
+  if(val <= isoDate(new Date())){ alert('La fecha de incorporación debe ser posterior a hoy.'); return; }
+  if(pendingReturnId){ absentReturns[pendingReturnId] = val; }
+  saveAbsences();
+  closeReturnDialog();
+  renderGroups();
+});
+document.getElementById('returnCancelBtn').addEventListener('click', ()=>{
+  if(pendingReturnId){
+    absentSet.delete(pendingReturnId);
+    delete absentReturns[pendingReturnId];
+  }
+  closeReturnDialog();
+  renderGroups();
+});
 function renderGroups(){
   const container = document.getElementById('groups');
   container.innerHTML = '';
@@ -600,10 +688,18 @@ function renderGroups(){
     byCat[cat].forEach(id=>{
       const chip = document.createElement('label');
       chip.className = 'chip' + (absentSet.has(id) ? ' absent' : '');
-      chip.innerHTML = `<input type="checkbox" ${absentSet.has(id)?'checked':''} data-id="${id}"> ${labelOf(id)}`;
+      const retHint = (absentSet.has(id) && absentReturns[id])
+        ? ` <span style="opacity:.75;font-size:10.5px;">↩ ${fmtDate(new Date(absentReturns[id]+'T00:00:00'))}</span>` : '';
+      chip.innerHTML = `<input type="checkbox" ${absentSet.has(id)?'checked':''} data-id="${id}"> ${labelOf(id)}${retHint}`;
       chip.querySelector('input').addEventListener('change', e=>{
-        if(e.target.checked) absentSet.add(id); else absentSet.delete(id);
-        saveAbsences();
+        if(e.target.checked){
+          absentSet.add(id);
+          askReturnDate(id); // pregunta si se sabe la fecha de vuelta; guarda al responder
+        } else {
+          absentSet.delete(id);
+          delete absentReturns[id];
+          saveAbsences();
+        }
         renderGroups();
       });
       chips.appendChild(chip);
@@ -612,6 +708,25 @@ function renderGroups(){
     container.appendChild(div);
   });
   document.getElementById('absCount').textContent = absentSet.size + ' no operativo(s) marcado(s)';
+
+  // ---- PRÓXIMAS INCORPORACIONES ----
+  const incPanel = document.getElementById('incorporaciones');
+  const incList = document.getElementById('incorporacionesList');
+  const proximos = Object.keys(absentReturns)
+    .filter(id=>absentSet.has(id))
+    .sort((a,b)=>absentReturns[a].localeCompare(absentReturns[b]));
+  if(!proximos.length){
+    incPanel.style.display = 'none';
+  } else {
+    incPanel.style.display = 'block';
+    incList.innerHTML = '';
+    proximos.forEach(id=>{
+      const row = document.createElement('div');
+      row.className = 'unit-row';
+      row.innerHTML = `<span>${labelOf(id)}</span><span class="sub">se incorpora el ${fmtDate(new Date(absentReturns[id]+'T00:00:00'))}</span>`;
+      incList.appendChild(row);
+    });
+  }
 }
 
 function getMonday(d){
@@ -685,9 +800,10 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
   if(sets.g2days.includes(dayName)) G2.forEach(id=>poolIds.push(id));
   const mandoToday = MANDO_ORDER.filter(id=>sets.mandodays.includes(dayName));
 
-  let pool = poolIds.filter(id=>!absentSet.has(id));
+  // Ausencias día a día: si el agente tiene fecha de incorporación anterior o igual a este día, ya cuenta como operativo
+  let pool = poolIds.filter(id=>!isAbsentOn(id, dateObj));
   if(!tempActive) pool = pool.filter(id=>id!=='724'); // el 724 deja de existir a partir del 01/09/2026
-  const mandoPresentes = mandoToday.filter(id=>!absentSet.has(id));
+  const mandoPresentes = mandoToday.filter(id=>!isAbsentOn(id, dateObj));
 
   // Restricciones duras por agente y unidad (unitName = clave original de la unidad).
   function canDo(id, unitName){
