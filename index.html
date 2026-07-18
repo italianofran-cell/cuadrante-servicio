@@ -96,9 +96,9 @@ input[type=date]{
 .chip input{accent-color:var(--red);cursor:pointer;}
 /* Estados de asistencia */
 .chip.st-activo{border-color:#3ecf6f;background:rgba(62,207,111,.08);}
-.chip.st-programada{border-color:#4f9fe0;background:rgba(79,159,224,.12);color:#b9d9f5;}
+.chip.st-programada{border-color:#e8c33f;background:rgba(232,195,63,.13);color:#f0dfa0;}
 .chip.st-ausente{border-color:var(--red);background:rgba(226,87,76,.14);color:#f5b3ad;}
-.chip.st-regreso{border-color:#e8c33f;background:rgba(232,195,63,.13);color:#f0dfa0;}
+.chip.st-regreso{border-color:#4f9fe0;background:rgba(79,159,224,.12);color:#b9d9f5;}
 .leyenda{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;font-size:11px;color:var(--muted);}
 .leyenda .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;}
 /* Intercambio de agentes en el cuadrante generado */
@@ -301,7 +301,22 @@ tr:last-child td{border-bottom:none;}
   @page{size:A4 portrait;margin:8mm;}
   body{background:#fff !important;color:#000;padding:0;}
   body *{visibility:hidden;}
-  #results, #results *{visibility:visible;}
+  body:not(.print-modal) #results, body:not(.print-modal) #results *{visibility:visible;}
+  /* Impresión de los modales de historial (agentes / tiro-táser) */
+  body.print-modal #modalOverlay, body.print-modal #modalOverlay *{visibility:visible;}
+  body.print-modal #modalOverlay{display:block !important;position:absolute;inset:auto;left:0;top:0;width:100%;height:auto;background:#fff;padding:0;}
+  body.print-modal .modal-box{position:static;display:block;width:100%;max-width:100%;max-height:none;height:auto;border:none;border-radius:0;overflow:visible;background:#fff;}
+  body.print-modal .modal-head{border-bottom:1px solid #888;padding:0 0 4px;color:#000;}
+  body.print-modal .modal-head button{display:none;}
+  body.print-modal .modal-body{padding:4px 0 0;overflow:visible;}
+  body.print-modal .modal-foot{border-top:none;padding:4px 0 0;}
+  body.print-modal .modal-foot button{display:none;}
+  body.print-modal .modal-foot .sub{color:#000;font-size:8.5px;}
+  body.print-modal table{font-size:9.5px;width:100%;}
+  body.print-modal td, body.print-modal th{padding:2px 6px;border-bottom:1px solid #ccc;color:#000;}
+  body.print-modal th{color:#000;font-weight:700;font-size:8.5px;}
+  body.print-modal .unit{color:#000;}
+  body.print-modal .pico-row .unit{color:#000;}
   /* Todo en un único folio: días sin servicio ocultos y días en 2 columnas */
   #results{position:absolute;left:0;top:0;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:3mm;align-items:start;}
   .noprint{display:none !important;}
@@ -423,6 +438,7 @@ tr:last-child td{border-bottom:none;}
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-foot">
         <span class="sub" id="modalHint"></span>
+        <button class="secondary" id="modalPdfBtn" type="button" style="display:none;">Generar PDF</button>
         <button id="modalSave" type="button">Guardar cambios</button>
       </div>
     </div>
@@ -443,9 +459,9 @@ tr:last-child td{border-bottom:none;}
     <h2>Asistencia</h2>
     <div class="leyenda">
       <span><span class="dot" style="background:#3ecf6f;"></span>Activo</span>
-      <span><span class="dot" style="background:#4f9fe0;"></span>Activo con ausencia programada</span>
+      <span><span class="dot" style="background:#e8c33f;"></span>Activo con ausencia programada</span>
       <span><span class="dot" style="background:var(--red);"></span>No operativo</span>
-      <span><span class="dot" style="background:#e8c33f;"></span>No operativo con regreso programado</span>
+      <span><span class="dot" style="background:#4f9fe0;"></span>No operativo con regreso programado</span>
     </div>
     <div class="sub" style="margin-bottom:12px;">Pulsa sobre un agente para programar su ausencia y su fecha de incorporación.</div>
     <div id="groups" class="groups"></div>
@@ -1534,6 +1550,13 @@ document.getElementById('tiroConfirmBtn').addEventListener('click', ()=>{
 document.getElementById('pdfBtn').addEventListener('click', ()=>{
   window.print();
 });
+document.getElementById('modalPdfBtn').addEventListener('click', ()=>{
+  document.body.classList.add('print-modal');
+  window.print();
+});
+window.addEventListener('afterprint', ()=>{
+  document.body.classList.remove('print-modal');
+});
 
 // ---------- CONFIGURACION: prioridad de unidades y habilitados (persistentes) ----------
 async function loadConfig(){
@@ -1617,6 +1640,7 @@ function closeModal(){
   modalOverlay.style.display = 'none';
   modalMode = null;
   document.getElementById('modalSave').style.display = '';
+  document.getElementById('modalPdfBtn').style.display = 'none';
   modalOverlay.querySelector('.modal-box').classList.remove('wide');
 }
 document.getElementById('modalClose').addEventListener('click', closeModal);
@@ -2075,6 +2099,7 @@ async function renderHistAgentesModal(){
     modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Todavía no hay cuadrantes guardados de los que sacar el historial.</p>';
     return;
   }
+  document.getElementById('modalPdfBtn').style.display = '';
 
   let html = '<div style="overflow-x:auto;"><table style="font-size:11.5px;"><thead><tr><th>Agente</th>';
   cols.forEach(u=>{ html += `<th>${u}</th>`; });
@@ -2125,6 +2150,7 @@ async function renderTiroHistModal(){
     modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Todavía no hay semanas guardadas con tiro o táser.</p>';
     return;
   }
+  document.getElementById('modalPdfBtn').style.display = '';
   let thtml = '<div style="overflow-x:auto;"><table style="font-size:12px;"><thead><tr><th>Agente</th><th>🎯 TIRO</th><th>⚡ TASER</th></tr></thead><tbody>';
   ALL_RANGO_IDS.forEach(id=>{
     thtml += `<tr><td class="unit">${agentLabel(id)}</td><td style="text-align:center;">${tiroC[id] || '—'}</td><td style="text-align:center;">${taserC[id] || '—'}</td></tr>`;
