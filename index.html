@@ -693,6 +693,23 @@ function agentState(id){
   if(e.desde <= hoy) return e.vuelve ? 'regreso' : 'ausente';
   return 'programada';
 }
+function daysUntil(iso){
+  const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+  return Math.round((new Date(iso+'T00:00:00') - hoy0)/86400000);
+}
+// Color del chip: amber/azul solo dentro de los 15 días previos al cambio de situación
+// (inicio de ausencia o incorporación); fuera de ese margen se queda en verde/rojo.
+function agentColorClass(id){
+  const e = agentStatus[id];
+  if(!e) return 'activo';
+  const hoy = isoDate(new Date());
+  if(e.vuelve && e.vuelve <= hoy) return 'activo';
+  if(e.desde <= hoy){
+    if(e.vuelve && daysUntil(e.vuelve) <= 15) return 'regreso';
+    return 'ausente';
+  }
+  return daysUntil(e.desde) <= 15 ? 'programada' : 'activo';
+}
 function isAbsentOn(id, dateObj){
   const e = agentStatus[id];
   if(!e) return false;
@@ -789,7 +806,7 @@ function renderGroups(){
       else if(st==='regreso') hint = ` <span style="opacity:.8;font-size:10.5px;">↩ ${fmtShort(e.vuelve)}</span>`;
       else if(st==='ausente') hint = ` <span style="opacity:.8;font-size:10.5px;">✕</span>`;
       const chip = document.createElement('span');
-      chip.className = 'chip st-' + st;
+      chip.className = 'chip st-' + agentColorClass(id);
       chip.innerHTML = `${labelOf(id)}${hint}`;
       chip.addEventListener('click', ()=>openAbsDialog(id));
       chips.appendChild(chip);
