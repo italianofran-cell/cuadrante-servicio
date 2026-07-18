@@ -413,18 +413,27 @@ tr:last-child td{border-bottom:none;}
   </div>
 
   <div id="returnOverlay" class="modal-overlay" style="display:none;">
-    <div class="modal-box" style="max-width:400px;">
+    <div class="modal-box" style="max-width:460px;">
       <div class="modal-head"><span id="absDialogTitle">Asistencia</span></div>
       <div class="modal-body">
-        <p class="sub" style="margin-top:0;" id="returnAgentLabel"></p>
+        <div class="group-title">Ausencias registradas</div>
+        <div id="absList"></div>
+        <div class="group-title" style="margin-top:16px;">Añadir ausencia</div>
+        <label>Motivo</label><br>
+        <select id="absMotivo" style="width:100%;margin:6px 0 12px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;">
+          <option value="BAJA">BAJA</option>
+          <option value="VACACIONES">VACACIONES</option>
+          <option value="AP">AP</option>
+          <option value="PERMISO">PERMISO</option>
+        </select>
         <label>Inicio de la ausencia</label><br>
         <input type="date" id="absStart" style="width:100%;margin:6px 0 12px;">
         <label>Fecha de incorporación (déjala vacía si no la sabes)</label><br>
         <input type="date" id="absReturn" style="width:100%;margin:6px 0 16px;">
         <div class="row">
-          <button id="absSaveBtn" type="button">Guardar ausencia</button>
-          <button class="secondary" id="absActiveBtn" type="button">Marcar ACTIVO</button>
-          <button class="ghost" id="absCancelBtn" type="button">Cancelar</button>
+          <button id="absAddBtn" type="button">+ Añadir ausencia</button>
+          <button class="secondary" id="absActiveBtn" type="button">Marcar ACTIVO (quitar todas)</button>
+          <button class="ghost" id="absCancelBtn" type="button">Cerrar</button>
         </div>
       </div>
     </div>
@@ -681,18 +690,30 @@ const appStorage = {
 };
 
 // ---------- ASISTENCIA ----------
-// Estado por agente: {desde:'YYYY-MM-DD', vuelve:'YYYY-MM-DD'|null}. Sin entrada = ACTIVO.
-// Estados derivados respecto a hoy:
+// Ausencias por agente: {id: [{desde:'YYYY-MM-DD', vuelve:'YYYY-MM-DD'|null, motivo:'BAJA'|'VACACIONES'|'AP'|'PERMISO'}]}.
+// Cada agente puede tener varios intervalos (p. ej. unas vacaciones ahora y un AP el mes que viene).
+// Sin entrada (o lista vacía) = ACTIVO. Estados derivados respecto a hoy:
 //   activo · programada (activo con ausencia futura) · ausente (sin vuelta) · regreso (ausente con vuelta)
 let agentStatus = {};
 
+function intervalosDe(id){ return agentStatus[id] || []; }
+function isAbsentOn(id, dateObj){
+  const d = dateObj ? isoDate(dateObj) : isoDate(new Date());
+  return intervalosDe(id).some(iv => d >= iv.desde && (!iv.vuelve || d < iv.vuelve));
+}
+function intervaloActual(id){
+  const d = isoDate(new Date());
+  return intervalosDe(id).find(iv => d >= iv.desde && (!iv.vuelve || d < iv.vuelve)) || null;
+}
+function proximoIntervalo(id){
+  const d = isoDate(new Date());
+  const futuros = intervalosDe(id).filter(iv => iv.desde > d).sort((a,b)=>a.desde.localeCompare(b.desde));
+  return futuros[0] || null;
+}
 function agentState(id){
-  const e = agentStatus[id];
-  if(!e) return 'activo';
-  const hoy = isoDate(new Date());
-  if(e.vuelve && e.vuelve <= hoy) return 'activo';
-  if(e.desde <= hoy) return e.vuelve ? 'regreso' : 'ausente';
-  return 'programada';
+  const act = intervaloActual(id);
+  if(act) return act.vuelve ? 'regreso' : 'ausente';
+  return proximoIntervalo(id) ? 'programada' : 'activo';
 }
 function daysUntil(iso){
   const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
@@ -701,21 +722,14 @@ function daysUntil(iso){
 // Color del chip: amber/azul solo dentro de los 15 días previos al cambio de situación
 // (inicio de ausencia o incorporación); fuera de ese margen se queda en verde/rojo.
 function agentColorClass(id){
-  const e = agentStatus[id];
-  if(!e) return 'activo';
-  const hoy = isoDate(new Date());
-  if(e.vuelve && e.vuelve <= hoy) return 'activo';
-  if(e.desde <= hoy){
-    if(e.vuelve && daysUntil(e.vuelve) <= 15) return 'regreso';
+  const act = intervaloActual(id);
+  if(act){
+    if(act.vuelve && daysUntil(act.vuelve) <= 15) return 'regreso';
     return 'ausente';
   }
-  return daysUntil(e.desde) <= 15 ? 'programada' : 'activo';
-}
-function isAbsentOn(id, dateObj){
-  const e = agentStatus[id];
-  if(!e) return false;
-  const d = dateObj ? isoDate(dateObj) : isoDate(new Date());
-  return d >= e.desde && (!e.vuelve || d < e.vuelve);
+  const prox = proximoIntervalo(id);
+  if(prox && daysUntil(prox.desde) <= 15) return 'programada';
+  return 'activo';
 }
 function absentTodayIds(){
   return Object.keys(agentStatus).filter(id=>{ const s = agentState(id); return s==='ausente' || s==='regreso'; });
@@ -723,25 +737,35 @@ function absentTodayIds(){
 function fmtShort(iso){ return fmtDate(new Date(iso + 'T00:00:00')); }
 
 async function loadAbsences(){
-  let migrar = false;
+  let noExiste = false;
   try{
     const res = await appStorage.get('agent_status', false);
     if(res && res.value) agentStatus = JSON.parse(res.value);
-  }catch(e){ migrar = true; }
-  if(migrar){
-    // Migración desde el modelo antiguo (lista de no operativos + fechas de vuelta)
+  }catch(e){ noExiste = true; }
+  let cambios = false;
+  if(noExiste){
+    // Migración desde el modelo más antiguo (lista de no operativos + fechas de vuelta)
     const hoy = isoDate(new Date());
     let oldSet = [], oldRet = {};
     try{ const r = await appStorage.get('absentees', false); if(r && r.value) oldSet = JSON.parse(r.value); }catch(e){}
     try{ const r = await appStorage.get('absent_returns', false); if(r && r.value) oldRet = JSON.parse(r.value); }catch(e){}
-    oldSet.forEach(id=>{ agentStatus[id] = {desde: hoy, vuelve: oldRet[id] || null}; });
-    saveAbsences();
+    oldSet.forEach(id=>{ agentStatus[id] = [{desde: hoy, vuelve: oldRet[id] || null, motivo: null}]; });
+    cambios = true;
   }
-  // Limpieza: incorporaciones ya cumplidas → vuelve a ACTIVO
-  const hoy = isoDate(new Date());
-  let cambios = false;
+  // Migración del modelo intermedio ({desde, vuelve} suelto) a la lista de intervalos con motivo
   Object.keys(agentStatus).forEach(id=>{
-    if(agentStatus[id].vuelve && agentStatus[id].vuelve <= hoy){ delete agentStatus[id]; cambios = true; }
+    if(!Array.isArray(agentStatus[id])){
+      agentStatus[id] = [Object.assign({motivo: null}, agentStatus[id])];
+      cambios = true;
+    }
+  });
+  // Limpieza: intervalos ya terminados desaparecen; sin intervalos → ACTIVO
+  const hoy = isoDate(new Date());
+  Object.keys(agentStatus).forEach(id=>{
+    const antes = agentStatus[id].length;
+    agentStatus[id] = agentStatus[id].filter(iv => !(iv.vuelve && iv.vuelve <= hoy));
+    if(agentStatus[id].length !== antes) cambios = true;
+    if(!agentStatus[id].length) delete agentStatus[id];
   });
   if(cambios) saveAbsences();
   renderGroups();
@@ -757,32 +781,64 @@ const returnOverlay = document.getElementById('returnOverlay');
 
 function openAbsDialog(id){
   pendingAbsId = id;
-  const e = agentStatus[id];
   document.getElementById('absDialogTitle').textContent = 'Asistencia · ' + labelOf(id);
-  document.getElementById('returnAgentLabel').textContent = e
-    ? 'Ausencia registrada desde el ' + fmtShort(e.desde) + (e.vuelve ? ' · se incorpora el ' + fmtShort(e.vuelve) : ' · sin fecha de vuelta') + '. Modifícala o pulsa "Marcar ACTIVO".'
-    : 'Agente ACTIVO. Programa una ausencia (desde hoy o una fecha futura) e indica su incorporación si la sabes.';
-  document.getElementById('absStart').value = e ? e.desde : isoDate(new Date());
-  document.getElementById('absReturn').value = (e && e.vuelve) ? e.vuelve : '';
+  document.getElementById('absMotivo').value = 'BAJA';
+  document.getElementById('absStart').value = isoDate(new Date());
+  document.getElementById('absReturn').value = '';
+  drawAbsList();
   returnOverlay.style.display = 'flex';
+}
+function drawAbsList(){
+  const id = pendingAbsId;
+  const list = document.getElementById('absList');
+  list.innerHTML = '';
+  const ivs = intervalosDe(id).slice().sort((a,b)=>a.desde.localeCompare(b.desde));
+  if(!ivs.length){
+    list.innerHTML = '<p class="sub" style="margin:0;">Agente ACTIVO, sin ausencias registradas.</p>';
+    return;
+  }
+  ivs.forEach(iv=>{
+    const row = document.createElement('div');
+    row.className = 'unit-row';
+    row.innerHTML = `<span><b>${iv.motivo || 'AUSENCIA'}</b> · desde ${fmtShort(iv.desde)}${iv.vuelve ? ' · se incorpora el ' + fmtShort(iv.vuelve) : ' · sin fecha de vuelta'}</span>`;
+    const del = document.createElement('button');
+    del.textContent = 'Eliminar';
+    del.style.cssText = 'background:transparent;border:1px solid var(--red);color:var(--red);padding:4px 9px;font-size:11px;';
+    del.addEventListener('click', ()=>{
+      agentStatus[id] = intervalosDe(id).filter(x=>x!==iv);
+      if(!agentStatus[id].length) delete agentStatus[id];
+      saveAbsences();
+      drawAbsList();
+      renderGroups();
+    });
+    row.appendChild(del);
+    list.appendChild(row);
+  });
 }
 function closeAbsDialog(){ returnOverlay.style.display = 'none'; pendingAbsId = null; }
 
-document.getElementById('absSaveBtn').addEventListener('click', ()=>{
+document.getElementById('absAddBtn').addEventListener('click', ()=>{
+  const id = pendingAbsId;
+  if(!id) return;
+  const motivo = document.getElementById('absMotivo').value;
   const desde = document.getElementById('absStart').value;
   const vuelve = document.getElementById('absReturn').value || null;
   if(!desde){ alert('Indica la fecha de inicio de la ausencia.'); return; }
   if(vuelve && vuelve <= desde){ alert('La fecha de incorporación debe ser posterior al inicio de la ausencia.'); return; }
   if(vuelve && vuelve <= isoDate(new Date())){ alert('La fecha de incorporación debe ser posterior a hoy.'); return; }
-  if(pendingAbsId) agentStatus[pendingAbsId] = {desde, vuelve};
+  const solapa = intervalosDe(id).some(iv => desde < (iv.vuelve || '9999-99-99') && (!vuelve || iv.desde < vuelve));
+  if(solapa && !confirm('Este intervalo se solapa con otra ausencia ya registrada del agente. ¿Añadirlo igualmente?')) return;
+  if(!agentStatus[id]) agentStatus[id] = [];
+  agentStatus[id].push({desde, vuelve, motivo});
+  document.getElementById('absReturn').value = '';
   saveAbsences();
-  closeAbsDialog();
+  drawAbsList();
   renderGroups();
 });
 document.getElementById('absActiveBtn').addEventListener('click', ()=>{
   if(pendingAbsId) delete agentStatus[pendingAbsId];
   saveAbsences();
-  closeAbsDialog();
+  drawAbsList();
   renderGroups();
 });
 document.getElementById('absCancelBtn').addEventListener('click', closeAbsDialog);
@@ -801,11 +857,17 @@ function renderGroups(){
     chips.className='chips';
     byCat[cat].forEach(id=>{
       const st = agentState(id);
-      const e = agentStatus[id];
       let hint = '';
-      if(st==='programada') hint = ` <span style="opacity:.8;font-size:10.5px;">→ ${fmtShort(e.desde)}</span>`;
-      else if(st==='regreso') hint = ` <span style="opacity:.8;font-size:10.5px;">↩ ${fmtShort(e.vuelve)}</span>`;
-      else if(st==='ausente') hint = ` <span style="opacity:.8;font-size:10.5px;">✕</span>`;
+      if(st==='programada'){
+        const iv = proximoIntervalo(id);
+        hint = ` <span style="opacity:.8;font-size:10.5px;">→ ${fmtShort(iv.desde)}${iv.motivo ? ' ' + iv.motivo : ''}</span>`;
+      } else if(st==='regreso'){
+        const iv = intervaloActual(id);
+        hint = ` <span style="opacity:.8;font-size:10.5px;">${iv.motivo ? iv.motivo + ' ' : ''}↩ ${fmtShort(iv.vuelve)}</span>`;
+      } else if(st==='ausente'){
+        const iv = intervaloActual(id);
+        hint = ` <span style="opacity:.8;font-size:10.5px;">${iv.motivo || '✕'}</span>`;
+      }
       const chip = document.createElement('span');
       chip.className = 'chip st-' + agentColorClass(id);
       chip.innerHTML = `${labelOf(id)}${hint}`;
@@ -822,13 +884,14 @@ function renderGroups(){
   const enDias = iso => Math.round((new Date(iso+'T00:00:00') - hoy0)/86400000);
   const movs = [];
   Object.keys(agentStatus).forEach(id=>{
-    const e = agentStatus[id];
-    const dD = enDias(e.desde);
-    if(dD > 0 && dD <= 15) movs.push({id, dias:dD, tipo:'ausencia', fecha:e.desde});
-    if(e.vuelve){
-      const dV = enDias(e.vuelve);
-      if(dV > 0 && dV <= 15) movs.push({id, dias:dV, tipo:'incorporacion', fecha:e.vuelve});
-    }
+    intervalosDe(id).forEach(iv=>{
+      const dD = enDias(iv.desde);
+      if(dD > 0 && dD <= 15) movs.push({id, dias:dD, tipo:'ausencia', fecha:iv.desde, motivo:iv.motivo});
+      if(iv.vuelve){
+        const dV = enDias(iv.vuelve);
+        if(dV > 0 && dV <= 15) movs.push({id, dias:dV, tipo:'incorporacion', fecha:iv.vuelve, motivo:iv.motivo});
+      }
+    });
   });
   movs.sort((a,b)=>a.dias-b.dias);
   const movPanel = document.getElementById('movimientos');
@@ -842,9 +905,10 @@ function renderGroups(){
       const row = document.createElement('div');
       row.className = 'unit-row';
       const dia = m.dias === 1 ? '1 día' : m.dias + ' días';
+      const mot = m.motivo ? ` por ${m.motivo}` : '';
       const txt = m.tipo==='ausencia'
-        ? `estará ausente dentro de ${dia} (${fmtShort(m.fecha)})`
-        : `se incorpora dentro de ${dia} (${fmtShort(m.fecha)})`;
+        ? `estará ausente${mot} dentro de ${dia} (${fmtShort(m.fecha)})`
+        : `se incorpora${m.motivo ? ' de ' + m.motivo : ''} dentro de ${dia} (${fmtShort(m.fecha)})`;
       row.innerHTML = `<span>${labelOf(m.id)}</span><span class="sub">${txt}</span>`;
       movList.appendChild(row);
     });

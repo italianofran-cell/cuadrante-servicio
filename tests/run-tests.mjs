@@ -181,13 +181,18 @@ for (let i = 0; i < REPS; i++) for (const monday of [SEMANA_B, SEMANA_A]){
   }
 }
 
-// ---------- 7. Ausencias con fechas (día a día) ----------
-console.log('7. Ausencias por fechas aplicadas día a día');
+// ---------- 7. Ausencias con fechas, motivos e intervalos múltiples ----------
+console.log('7. Ausencias por fechas (intervalos con motivo) aplicadas día a día');
 resetConfig();
-// 633 se ausenta desde el jueves 23/07; 914 vuelve el jueves 23/07
+// 633 de BAJA desde el jueves 23/07; 914 de VACACIONES hasta el jueves 23/07;
+// 669 con DOS intervalos: VACACIONES del 20 al 21 y AP del 23 al 25
 t.set({ agentStatus: {
-  '633': {desde:'2026-07-23', vuelve:null},
-  '914': {desde:'2026-07-01', vuelve:'2026-07-23'}
+  '633': [{desde:'2026-07-23', vuelve:null, motivo:'BAJA'}],
+  '914': [{desde:'2026-07-01', vuelve:'2026-07-23', motivo:'VACACIONES'}],
+  '669': [
+    {desde:'2026-07-20', vuelve:'2026-07-22', motivo:'VACACIONES'},
+    {desde:'2026-07-23', vuelve:'2026-07-26', motivo:'AP'}
+  ]
 }});
 for (let i = 0; i < REPS; i++){
   const wk = mkWeek(SEMANA_B); // Lun 20, Mié 22, Jue 23, Dom 26
@@ -198,6 +203,9 @@ for (let i = 0; i < REPS; i++){
     const antesDelJueves = d.date < '2026-07-23';
     ok(all.has('633') === antesDelJueves, `${d.dayName} (${d.date}): 633 ${antesDelJueves?'debería':'no debería'} trabajar`);
     ok(all.has('914') === !antesDelJueves, `${d.dayName} (${d.date}): 914 ${!antesDelJueves?'debería':'no debería'} trabajar`);
+    // 669: ausente Lun (vacaciones) y Jue (AP); trabaja Mié y Dom
+    const debe669 = (d.date === '2026-07-22' || d.date === '2026-07-26');
+    ok(all.has('669') === debe669, `${d.dayName} (${d.date}): 669 ${debe669?'debería':'no debería'} trabajar (intervalos múltiples)`);
   }
 }
 
