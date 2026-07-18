@@ -341,7 +341,6 @@ tr:last-child td{border-bottom:none;}
     <h2>No operativos esta semana</h2>
     <div id="groups" class="groups"></div>
     <div class="row" style="margin-top:14px;">
-      <button class="ghost" id="clearBtn" type="button">Marcar todos operativos</button>
       <span class="sub" id="absCount"></span>
     </div>
   </div>
@@ -568,11 +567,6 @@ function renderGroups(){
   });
   document.getElementById('absCount').textContent = absentSet.size + ' no operativo(s) marcado(s)';
 }
-document.getElementById('clearBtn').addEventListener('click', ()=>{
-  absentSet.clear();
-  saveAbsences();
-  renderGroups();
-});
 
 function getMonday(d){
   const date = new Date(d);
