@@ -6,7 +6,6 @@
 <title>Cuadrante de Servicio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
@@ -243,16 +242,29 @@ tr:last-child td{border-bottom:none;}
 }
 .results-header .range{color:var(--muted);font-size:13px;margin-top:2px;}
 @media print{
-  body{background:#fff;color:#000;padding:0;}
+  @page{size:A4 portrait;margin:10mm;}
+  body{background:#fff !important;color:#000;padding:0;}
   body *{visibility:hidden;}
   #results, #results *{visibility:visible;}
   #results{position:absolute;left:0;top:0;width:100%;}
-  .day-card{border:1px solid #ccc;break-inside:avoid;}
-  .day-head{background:#f0f0f0;}
+  .noprint{display:none !important;}
+  .results-header{border:1px solid #888;background:#fff;border-radius:0;padding:6px 12px;margin-bottom:6px;}
+  .results-header .week-num{color:#000;font-size:15px;}
+  .results-header .range{color:#000;font-size:10px;margin-top:0;}
+  .day-card{border:1px solid #888;border-radius:0;background:#fff;break-inside:avoid;margin-bottom:6px;}
+  .day-head{background:#e5e5e5 !important;padding:4px 12px;border-bottom:1px solid #888;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .day-head .d{color:#000;font-size:11.5px;}
+  .day-head .sys{color:#222;font-size:9px;}
+  table{font-size:9.5px;}
+  td,th{padding:2px 12px;border-bottom:1px solid #bbb;color:#000;}
+  th{color:#000;font-size:8.5px;}
   .unit{color:#000;}
-  .empty{color:#b00;}
-  .results-header{border:1px solid #ccc;background:#fafafa;}
-  .results-header .week-num{color:#000;}
+  .agent{color:#000;}
+  .empty{color:#000;font-weight:700;text-decoration:underline;}
+  .pico-row{background:#efefef !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .pico-row .unit{color:#000;}
+  .footnote{display:none;}
+  .skip-note{color:#222;font-size:9px;padding:3px 12px;}
 }
 </style>
 </head>
@@ -276,6 +288,10 @@ tr:last-child td{border-bottom:none;}
     <button class="secondary" id="salaBtn" type="button">Habilitados SALA</button>
     <button class="secondary" id="patrimonioBtn" type="button">Fijos Patrimonio</button>
     <button class="secondary" id="pairsBtn" type="button">Parejas preferentes</button>
+    <button class="secondary" id="incompatBtn" type="button">Parejas incompatibles</button>
+    <button class="secondary" id="limitadosBtn" type="button">Limitados físicos</button>
+    <button class="secondary" id="namesBtn" type="button">Nombres de agentes</button>
+    <button class="secondary" id="histBtn" type="button">Historial agentes</button>
   </div>
 
   <div id="authOverlay" class="modal-overlay" style="display:none;">
@@ -339,7 +355,6 @@ tr:last-child td{border-bottom:none;}
 
   <div class="results-toolbar" id="resultsToolbar" style="display:none;">
     <button class="secondary" id="pdfBtn" type="button">Generar PDF</button>
-    <button class="secondary" id="jpgBtn" type="button">Descargar JPG</button>
     <span class="sub" id="saveStatus"></span>
   </div>
 
@@ -391,16 +406,37 @@ function sala1Hab(){ return habilitadosSala.filter(id=>id!=='791'); } // 791 nun
 function lunaHab(){ return habilitadosLuna; }
 
 // Fijos de patrimonio (AYUNTAMIENTO / ALMUDI). PUERTA no tiene fijo: la puede hacer cualquiera.
-let fijosPatrimonio = { ayuntamientoTitular:'633', ayuntamientoBackup:'724', almudiTitular:'582' };
+// En los backups el valor 'ANY' significa "cualquiera": si el titular falta, se elige por reparto equitativo.
+let fijosPatrimonio = { ayuntamientoTitular:'633', ayuntamientoBackup:'724', almudiTitular:'582', almudiBackup:'ANY' };
 
 // Parejas preferentes: [{a:'979', b:'791', days:['Martes','Sábado']}, ...]
 let preferredPairs = [];
 
+// Parejas incompatibles: no pueden coincidir en la misma unidad.
+// [{a:'979', b:'791', days:['Martes'], always:false}, ...] — always:true = incompatibles todos los días.
+let incompatiblePairs = [];
+function isIncompatible(x, y, dayName){
+  return incompatiblePairs.some(p=>
+    ((p.a===x && p.b===y) || (p.a===y && p.b===x)) && (p.always || p.days.includes(dayName)));
+}
+
+// Nombres opcionales por agente ({id: nombre}); se muestran junto al número en toda la app.
+let agentNames = {};
+function labelOf(id){
+  const base = AGENTS[id] ? AGENTS[id].label : String(id);
+  return agentNames[id] ? base + ' · ' + agentNames[id] : base;
+}
+
 // Reglas temporales vigentes hasta el 01/09/2026:
 // - SALA 2 solo existe como tal Viernes y Sábado; el resto de días ese puesto se llama V CH (mismos habilitados que SALA 2)
 // - PUERTA solo la cubren los habilitados de SALA
+// - El agente 724 SOLO puede hacer ALMUDI (si ALMUDI está cubierto, queda en PICO)
 // - El agente 724 deja de existir a partir de esta fecha (ya no entra en el reparto)
 const TEMP_RULES_CUTOFF = new Date(2026,8,1);
+
+// Limitados físicos: solo pueden hacer Patrimonio (AYUNTAMIENTO/ALMUDI/PUERTA) o SALA si están habilitados en sala.
+let limitadosFisicos = [];
+const UNIDADES_LIMITADOS = ['AYUNTAMIENTO','ALMUDI','PUERTA','SALA 1','SALA 2'];
 
 // Definición de unidades (metadatos). El ORDEN de prioridad se guarda aparte en unitPriority.
 // Ambas cosas (definiciones y orden) son editables desde el botón "Unidades y prioridad":
@@ -517,7 +553,7 @@ function renderGroups(){
     byCat[cat].forEach(id=>{
       const chip = document.createElement('label');
       chip.className = 'chip' + (absentSet.has(id) ? ' absent' : '');
-      chip.innerHTML = `<input type="checkbox" ${absentSet.has(id)?'checked':''} data-id="${id}"> ${AGENTS[id].label}`;
+      chip.innerHTML = `<input type="checkbox" ${absentSet.has(id)?'checked':''} data-id="${id}"> ${labelOf(id)}`;
       chip.querySelector('input').addEventListener('change', e=>{
         if(e.target.checked) absentSet.add(id); else absentSet.delete(id);
         saveAbsences();
@@ -611,6 +647,21 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
   if(!tempActive) pool = pool.filter(id=>id!=='724'); // el 724 deja de existir a partir del 01/09/2026
   const mandoPresentes = mandoToday.filter(id=>!absentSet.has(id));
 
+  // Restricciones duras por agente y unidad (unitName = clave original de la unidad).
+  function canDo(id, unitName){
+    if(tempActive && id==='724' && unitName!=='ALMUDI') return false; // 724 solo ALMUDI hasta 01/09
+    // Limitados físicos: solo Patrimonio o SALA (para SALA además deben estar en los habilitados,
+    // cosa que ya garantizan las listas de candidatos de SALA 1 / SALA 2).
+    if(limitadosFisicos.includes(id) && !UNIDADES_LIMITADOS.includes(unitName)) return false;
+    return true;
+  }
+  function compatOk(id, partners){
+    return !partners || !partners.some(p=>p && p!=='SIN CUBRIR' && isIncompatible(id, p, dayName));
+  }
+  function histCount(id, unitName){
+    return (histUnitCounts[id] && histUnitCounts[id][unitName]) || 0;
+  }
+
   function commit(id, unitKey){
     counts[id] = (counts[id]||0) + 1;
     if(!doneMap[id]) doneMap[id] = new Set();
@@ -618,13 +669,16 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
     pool = pool.filter(x=>x!==id);
     return id;
   }
-  function chooseFair(candidateIds, unitKey){
-    if(!candidateIds.length) return null;
-    const notRepeat = candidateIds.filter(id => !(doneMap[id] && doneMap[id].has(unitKey)));
-    const usePool = notRepeat.length ? notRepeat : candidateIds;
+  // doneKey: clave para no repetir unidad en la semana. unitName: clave real de la unidad
+  // (para restricciones y para el reparto equitativo con el historial de semanas anteriores).
+  function chooseFair(candidateIds, doneKey, unitName, partners){
+    const cand = candidateIds.filter(id=>canDo(id, unitName) && compatOk(id, partners));
+    if(!cand.length) return null;
+    const notRepeat = cand.filter(id => !(doneMap[id] && doneMap[id].has(doneKey)));
+    const usePool = notRepeat.length ? notRepeat : cand;
     const shuffled = shuffle([...usePool]);
-    shuffled.sort((a,b)=>(counts[a]||0)-(counts[b]||0));
-    return commit(shuffled[0], unitKey);
+    shuffled.sort((a,b)=>((counts[a]||0)-(counts[b]||0)) || (histCount(a,unitName)-histCount(b,unitName)));
+    return commit(shuffled[0], doneKey);
   }
 
   const assignments = [];
@@ -633,6 +687,7 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
   const claimedUnits = {}; // unitKeyOrig -> [idA, idB]
   preferredPairs.filter(p=>p.days.includes(dayName)).forEach(p=>{
     if(!pool.includes(p.a) || !pool.includes(p.b)) return; // alguno no trabaja o está ausente hoy
+    if(isIncompatible(p.a, p.b, dayName)) return; // marcados también como incompatibles: manda la incompatibilidad
     for(const key of unitPriority){
       if(claimedUnits[key]) continue;
       const def = UNIT_DEFS[key];
@@ -641,6 +696,7 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
         const list = getRestrictList(def.restrictType);
         if(!list.includes(p.a) || !list.includes(p.b)) continue;
       }
+      if(!canDo(p.a, key) || !canDo(p.b, key)) continue;
       claimedUnits[key] = [p.a, p.b];
       break;
     }
@@ -664,22 +720,26 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
     }
 
     const agents = [];
+    function fijoDisponible(id, unitName){
+      return id && id!=='ANY' && pool.includes(id) && canDo(id, unitName) && compatOk(id, agents);
+    }
     for(let i=0;i<u.count;i++){
       let ag = null;
       if(u.special==='ayuntamiento'){
-        if(pool.includes(fijosPatrimonio.ayuntamientoTitular)) ag = commit(fijosPatrimonio.ayuntamientoTitular,'AYUNTAMIENTO');
-        else if(pool.includes(fijosPatrimonio.ayuntamientoBackup)) ag = commit(fijosPatrimonio.ayuntamientoBackup,'AYUNTAMIENTO');
+        if(fijoDisponible(fijosPatrimonio.ayuntamientoTitular,'AYUNTAMIENTO')) ag = commit(fijosPatrimonio.ayuntamientoTitular,'AYUNTAMIENTO');
+        else if(fijoDisponible(fijosPatrimonio.ayuntamientoBackup,'AYUNTAMIENTO')) ag = commit(fijosPatrimonio.ayuntamientoBackup,'AYUNTAMIENTO');
         else {
           let cand = pool.filter(id=>!salaHab().includes(id));
           if(!cand.length) cand = [...pool];
-          ag = chooseFair(cand, 'AYUNTAMIENTO');
+          ag = chooseFair(cand, 'AYUNTAMIENTO', 'AYUNTAMIENTO', agents);
         }
       } else if(u.special==='almudi'){
-        if(pool.includes(fijosPatrimonio.almudiTitular)) ag = commit(fijosPatrimonio.almudiTitular,'ALMUDI');
+        if(fijoDisponible(fijosPatrimonio.almudiTitular,'ALMUDI')) ag = commit(fijosPatrimonio.almudiTitular,'ALMUDI');
+        else if(fijoDisponible(fijosPatrimonio.almudiBackup,'ALMUDI')) ag = commit(fijosPatrimonio.almudiBackup,'ALMUDI');
         else {
           let cand = pool.filter(id=>!salaHab().includes(id));
           if(!cand.length) cand = [...pool];
-          ag = chooseFair(cand, 'ALMUDI');
+          ag = chooseFair(cand, 'ALMUDI', 'ALMUDI', agents);
         }
       } else if(u.special==='puerta'){
         let cand;
@@ -690,13 +750,13 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
           cand = pool.filter(id=>!salaHab().includes(id));
           if(!cand.length) cand = [...pool];
         }
-        ag = chooseFair(cand, 'PUERTA');
+        ag = chooseFair(cand, 'PUERTA', 'PUERTA', agents);
       } else if(u.restrictType){
         const list = getRestrictList(u.restrictType);
         const cand = pool.filter(id=>list.includes(id));
-        ag = chooseFair(cand, u.unitKey || unitKeyOrig);
+        ag = chooseFair(cand, u.unitKey || unitKeyOrig, unitKeyOrig, agents);
       } else {
-        ag = chooseFair([...pool], unitKeyOrig);
+        ag = chooseFair([...pool], unitKeyOrig, unitKeyOrig, agents);
       }
       agents.push(ag || 'SIN CUBRIR');
     }
@@ -707,7 +767,61 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
   return {mandoPresentes, assignments, pico};
 }
 
+// ---------- HISTORIAL DE SEMANAS (para equidad entre semanas, historial por agente y aviso de ausencias) ----------
+let allWeeksCache = {};   // {mondayIso: weekData}
+let histUnitCounts = {};  // {agentId: {unitName: veces}} agregado de semanas anteriores
+const alertedAbsent = new Set();
+
+function normalizeUnitName(u){ return u==='V CH' ? 'SALA 2' : u; }
+
+async function loadAllWeeks(){
+  try{
+    const indexRes = await appStorage.get('cuadrante_index', false);
+    const index = indexRes && indexRes.value ? JSON.parse(indexRes.value) : [];
+    const entries = await Promise.all(index.map(async m=>{
+      try{
+        const r = await appStorage.get('cuadrante:'+m, false);
+        return [m, r && r.value ? JSON.parse(r.value) : null];
+      }catch(e){ return [m, null]; }
+    }));
+    allWeeksCache = {};
+    entries.forEach(([m,v])=>{ if(v) allWeeksCache[m] = v; });
+  }catch(e){ console.error(e); }
+}
+
+function aggregateUnitHistory(excludeMonday){
+  const acc = {};
+  const add = (ag, un)=>{
+    if(ag==='SIN CUBRIR') return;
+    if(!acc[ag]) acc[ag] = {};
+    acc[ag][un] = (acc[ag][un]||0) + 1;
+  };
+  Object.keys(allWeeksCache).forEach(monday=>{
+    if(monday === excludeMonday) return;
+    (allWeeksCache[monday].days||[]).forEach(d=>{
+      if(d.skip) return;
+      (d.assignments||[]).forEach(a=>a.agents.forEach(ag=>add(ag, normalizeUnitName(a.unit))));
+      (d.pico||[]).forEach(ag=>add(ag, 'PICO'));
+    });
+  });
+  return acc;
+}
+
+function checkLongAbsences(){
+  const mondays = Object.keys(allWeeksCache)
+    .filter(m=>Array.isArray(allWeeksCache[m].absent))
+    .sort().reverse().slice(0, 30);
+  if(mondays.length < 30) return;
+  const flagged = ALL_RANGO_IDS.filter(id=>
+    !alertedAbsent.has(id) && mondays.every(m=>allWeeksCache[m].absent.includes(id)));
+  if(flagged.length){
+    flagged.forEach(id=>alertedAbsent.add(id));
+    alert(flagged.map(id=>'⚠️ El agente ' + labelOf(id) + ' no se ha presentado a los 30 últimos servicios. ¡ASEGÚRATE DE QUE SIGUE VIVO!').join('\n\n'));
+  }
+}
+
 function buildWeekData(monday, weekType){
+  histUnitCounts = aggregateUnitHistory(isoDate(monday));
   const sets = workingSetsForWeek(weekType);
   const counts = {};
   const doneMap = {};
@@ -724,18 +838,19 @@ function buildWeekData(monday, weekType){
       dayName,
       date: isoDate(date),
       skip:false,
-      mandoLabel: day.mandoPresentes.length ? day.mandoPresentes.map(id=>AGENTS[id].label).join(' · ') : 'Sin mando disponible (ausente)',
+      mandoLabel: day.mandoPresentes.length ? day.mandoPresentes.map(id=>labelOf(id)).join(' · ') : 'Sin mando disponible (ausente)',
       assignments: day.assignments,
       pico: day.pico
     });
   });
   const weekNum = getISOWeek(monday);
-  return {monday: isoDate(monday), weekNum, weekType, generatedAt: new Date().toISOString(), days};
+  return {monday: isoDate(monday), weekNum, weekType, generatedAt: new Date().toISOString(), absent:[...absentSet], days};
 }
 
 function agentLabel(id){
   if(id==='SIN CUBRIR') return null;
-  return AGENTS[id] ? AGENTS[id].label.split(' · ')[0] : id;
+  const num = AGENTS[id] ? AGENTS[id].label.split(' · ')[0] : id;
+  return agentNames[id] ? num + ' ' + agentNames[id] : num;
 }
 function renderResults(data){
   const container = document.getElementById('results');
@@ -749,7 +864,7 @@ function renderResults(data){
   header.innerHTML = `
     <div class="week-num">Semana ${weekNum} · Fase ${data.weekType}</div>
     <div class="range">${fmtDate(mondayObj)} — ${fmtDate(sundayObj)}</div>
-    <div class="range" style="margin-top:6px;">Si algún NO OPERATIVO cambia a media semana, ajusta su casilla arriba y usa "Regenerar desde aquí" en el día correspondiente: los días anteriores no se tocan.</div>
+    <div class="range noprint" style="margin-top:6px;">Si algún NO OPERATIVO cambia a media semana, ajusta su casilla arriba y usa "Regenerar desde aquí" en el día correspondiente: los días anteriores no se tocan.</div>
   `;
   container.appendChild(header);
   document.getElementById('weekNav').style.display = 'flex';
@@ -802,6 +917,7 @@ function renderResults(data){
 }
 
 function regenerateFromDay(data, dayIndex){
+  histUnitCounts = aggregateUnitHistory(data.monday);
   const sets = workingSetsForWeek(data.weekType);
   const counts = {};
   const doneMap = {};
@@ -832,11 +948,12 @@ function regenerateFromDay(data, dayIndex){
       dayName,
       date: isoDate(dateObj),
       skip:false,
-      mandoLabel: day.mandoPresentes.length ? day.mandoPresentes.map(id=>AGENTS[id].label).join(' · ') : 'Sin mando disponible (ausente)',
+      mandoLabel: day.mandoPresentes.length ? day.mandoPresentes.map(id=>labelOf(id)).join(' · ') : 'Sin mando disponible (ausente)',
       assignments: day.assignments,
       pico: day.pico
     };
   }
+  data.absent = [...absentSet];
   data.generatedAt = new Date().toISOString();
   currentData = data;
   renderResults(data);
@@ -858,6 +975,8 @@ async function saveCurrentWeek(data){
       await appStorage.set('cuadrante_index', JSON.stringify(index), false);
     }
     document.getElementById('saveStatus').textContent = 'Guardado para revisión futura ✓';
+    allWeeksCache[data.monday] = data;
+    checkLongAbsences();
     loadHistory();
   }catch(e){
     document.getElementById('saveStatus').textContent = 'No se pudo guardar (error de almacenamiento)';
@@ -949,26 +1068,6 @@ document.getElementById('genBtn').addEventListener('click', ()=>{
 document.getElementById('pdfBtn').addEventListener('click', ()=>{
   window.print();
 });
-document.getElementById('jpgBtn').addEventListener('click', async ()=>{
-  const jpgBtn = document.getElementById('jpgBtn');
-  const original = jpgBtn.textContent;
-  jpgBtn.textContent = 'Generando...';
-  jpgBtn.disabled = true;
-  try{
-    const target = document.getElementById('results');
-    const canvas = await html2canvas(target, {backgroundColor:'#0f141b', scale:2});
-    const link = document.createElement('a');
-    const label = currentData ? ('cuadrante_semana_' + (currentData.weekNum||'') + '_' + currentData.monday) : 'cuadrante';
-    link.download = label + '.jpg';
-    link.href = canvas.toDataURL('image/jpeg', 0.95);
-    link.click();
-  }catch(e){
-    console.error(e);
-    alert('No se pudo generar la imagen. Prueba con "Generar PDF" como alternativa.');
-  }
-  jpgBtn.textContent = original;
-  jpgBtn.disabled = false;
-});
 
 // ---------- CONFIGURACION: prioridad de unidades y habilitados (persistentes) ----------
 async function loadConfig(){
@@ -999,6 +1098,18 @@ async function loadConfig(){
     const res = await appStorage.get('preferred_pairs', false);
     if(res && res.value) preferredPairs = JSON.parse(res.value);
   }catch(e){}
+  try{
+    const res = await appStorage.get('incompatible_pairs', false);
+    if(res && res.value) incompatiblePairs = JSON.parse(res.value);
+  }catch(e){}
+  try{
+    const res = await appStorage.get('limitados_fisicos', false);
+    if(res && res.value) limitadosFisicos = JSON.parse(res.value);
+  }catch(e){}
+  try{
+    const res = await appStorage.get('agent_names', false);
+    if(res && res.value) agentNames = JSON.parse(res.value);
+  }catch(e){}
 }
 async function saveUnitPriority(){
   try{ await appStorage.set('unit_priority', JSON.stringify(unitPriority), false); }catch(e){ console.error(e); }
@@ -1017,6 +1128,15 @@ async function saveFijosPatrimonio(){
 }
 async function savePreferredPairs(){
   try{ await appStorage.set('preferred_pairs', JSON.stringify(preferredPairs), false); }catch(e){ console.error(e); }
+}
+async function saveIncompatiblePairs(){
+  try{ await appStorage.set('incompatible_pairs', JSON.stringify(incompatiblePairs), false); }catch(e){ console.error(e); }
+}
+async function saveLimitadosFisicos(){
+  try{ await appStorage.set('limitados_fisicos', JSON.stringify(limitadosFisicos), false); }catch(e){ console.error(e); }
+}
+async function saveAgentNames(){
+  try{ await appStorage.set('agent_names', JSON.stringify(agentNames), false); }catch(e){ console.error(e); }
 }
 
 // ---------- MODAL ----------
@@ -1098,13 +1218,15 @@ function drawUnitsList(){
 }
 
 function renderHabilitadosModal(type){
-  modalMode = type; // 'sala' | 'luna'
-  const current = type==='sala' ? habilitadosSala : habilitadosLuna;
+  modalMode = type; // 'sala' | 'luna' | 'limitados'
+  const current = type==='sala' ? habilitadosSala : (type==='luna' ? habilitadosLuna : limitadosFisicos);
   modalHabDraft = new Set(current);
-  document.getElementById('modalTitle').textContent = type==='sala' ? 'Habilitados SALA / V CH' : 'Habilitados LUNA';
-  document.getElementById('modalHint').textContent = type==='sala'
-    ? 'Nota: 791 nunca puede hacer SALA 1 aunque esté marcado aquí.'
-    : 'Solo estos agentes pueden cubrir la unidad LUNA.';
+  document.getElementById('modalTitle').textContent =
+    type==='sala' ? 'Habilitados SALA / V CH' : (type==='luna' ? 'Habilitados LUNA' : 'Limitados físicos');
+  document.getElementById('modalHint').textContent =
+    type==='sala' ? 'Nota: 791 nunca puede hacer SALA 1 aunque esté marcado aquí.'
+    : (type==='luna' ? 'Solo estos agentes pueden cubrir la unidad LUNA.'
+    : 'Los marcados solo pueden hacer Patrimonio (Ayuntamiento, Almudí, Puerta) o Sala si están habilitados en Sala.');
   drawHabGrid();
   modalOverlay.style.display = 'flex';
 }
@@ -1116,7 +1238,7 @@ function drawHabGrid(){
     const on = modalHabDraft.has(id);
     const chip = document.createElement('label');
     chip.className = 'hab-chip' + (on ? ' on' : '');
-    chip.innerHTML = `<input type="checkbox" ${on?'checked':''} data-id="${id}"> ${AGENTS[id].label}`;
+    chip.innerHTML = `<input type="checkbox" ${on?'checked':''} data-id="${id}"> ${labelOf(id)}`;
     chip.querySelector('input').addEventListener('change', e=>{
       if(e.target.checked) modalHabDraft.add(id); else modalHabDraft.delete(id);
       chip.classList.toggle('on', e.target.checked);
@@ -1128,14 +1250,15 @@ function drawHabGrid(){
 
 let modalPatrimonioDraft = null;
 
-function singleSelectGrid(container, ids, currentValue, onPick){
+function singleSelectGrid(container, ids, currentValue, onPick, includeAny){
   const grid = document.createElement('div');
   grid.className = 'hab-grid';
-  ids.forEach(id=>{
+  const list = includeAny ? ['ANY', ...ids] : ids;
+  list.forEach(id=>{
     const on = id === currentValue;
     const chip = document.createElement('label');
     chip.className = 'hab-chip' + (on ? ' on' : '');
-    chip.innerHTML = `<input type="radio" ${on?'checked':''}> ${AGENTS[id].label}`;
+    chip.innerHTML = `<input type="radio" ${on?'checked':''}> ${id==='ANY' ? 'CUALQUIERA' : labelOf(id)}`;
     chip.querySelector('input').addEventListener('change', ()=>{
       onPick(id);
     });
@@ -1170,7 +1293,7 @@ function drawPatrimonioForm(){
   modalBody.appendChild(t2);
   singleSelectGrid(modalBody, ALL_RANGO_IDS, modalPatrimonioDraft.ayuntamientoBackup, id=>{
     modalPatrimonioDraft.ayuntamientoBackup = id; drawPatrimonioForm();
-  });
+  }, true);
 
   const t3 = document.createElement('div');
   t3.className = 'group-title';
@@ -1180,6 +1303,15 @@ function drawPatrimonioForm(){
   singleSelectGrid(modalBody, ALL_RANGO_IDS, modalPatrimonioDraft.almudiTitular, id=>{
     modalPatrimonioDraft.almudiTitular = id; drawPatrimonioForm();
   });
+
+  const t3b = document.createElement('div');
+  t3b.className = 'group-title';
+  t3b.style.marginTop = '16px';
+  t3b.textContent = 'Backup ALMUDI (si el titular no está disponible)';
+  modalBody.appendChild(t3b);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS, modalPatrimonioDraft.almudiBackup, id=>{
+    modalPatrimonioDraft.almudiBackup = id; drawPatrimonioForm();
+  }, true);
 
   const t4 = document.createElement('div');
   t4.className = 'group-title';
@@ -1269,7 +1401,7 @@ function drawPairsModal(){
       const row = document.createElement('div');
       row.className = 'unit-row';
       row.innerHTML = `
-        <span>${AGENTS[p.a] ? AGENTS[p.a].label : p.a} + ${AGENTS[p.b] ? AGENTS[p.b].label : p.b}
+        <span>${labelOf(p.a)} + ${labelOf(p.b)}
           <span class="sub"> · ${p.days.join(', ')}</span></span>
         <span class="arrows"><button type="button" class="del" data-delpair="${i}">Eliminar</button></span>`;
       modalBody.appendChild(row);
@@ -1331,6 +1463,165 @@ function drawPairsModal(){
 }
 let newPairA = null, newPairB = null;
 
+// ---------- MODAL: NOMBRES DE AGENTES ----------
+function renderNamesModal(){
+  modalMode = 'names';
+  document.getElementById('modalTitle').textContent = 'Nombres de agentes';
+  document.getElementById('modalHint').textContent = 'El nombre aparece junto al número en toda la aplicación. Deja en blanco para quitarlo.';
+  modalBody.innerHTML = '';
+  Object.keys(AGENTS).forEach(id=>{
+    const row = document.createElement('div');
+    row.className = 'unit-row';
+    row.innerHTML = `
+      <span style="min-width:70px;">${AGENTS[id].label.split(' · ')[0]}</span>
+      <input type="text" data-nameid="${id}" value="${(agentNames[id]||'').replace(/"/g,'&quot;')}" placeholder="Nombre"
+        style="flex:1;margin-left:10px;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:6px 10px;border-radius:6px;font-family:var(--font-mono);font-size:12.5px;">`;
+    modalBody.appendChild(row);
+  });
+  modalOverlay.style.display = 'flex';
+}
+
+// ---------- MODAL: PAREJAS INCOMPATIBLES ----------
+let modalIncompatDraft = [];
+let newIncA = null, newIncB = null, newIncDays = new Set(), newIncAlways = false;
+
+function renderIncompatModal(){
+  modalMode = 'incompat';
+  modalIncompatDraft = JSON.parse(JSON.stringify(incompatiblePairs));
+  newIncA = null; newIncB = null; newIncDays = new Set(); newIncAlways = false;
+  document.getElementById('modalTitle').textContent = 'Parejas incompatibles';
+  document.getElementById('modalHint').textContent = 'Los dos agentes marcados no pueden coincidir en la misma unidad los días elegidos.';
+  drawIncompatModal();
+  modalOverlay.style.display = 'flex';
+}
+
+function drawIncompatModal(){
+  modalBody.innerHTML = '';
+
+  if(modalIncompatDraft.length){
+    const t = document.createElement('div');
+    t.className = 'group-title';
+    t.textContent = 'Incompatibilidades configuradas';
+    modalBody.appendChild(t);
+    modalIncompatDraft.forEach((p, i)=>{
+      const row = document.createElement('div');
+      row.className = 'unit-row';
+      row.innerHTML = `
+        <span>${labelOf(p.a)} + ${labelOf(p.b)}
+          <span class="sub"> · ${p.always ? 'SIEMPRE INCOMPATIBLES' : p.days.join(', ')}</span></span>
+        <span class="arrows"><button type="button" class="del" data-delinc="${i}">Eliminar</button></span>`;
+      modalBody.appendChild(row);
+    });
+    modalBody.querySelectorAll('button[data-delinc]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        modalIncompatDraft.splice(parseInt(btn.dataset.delinc,10), 1);
+        drawIncompatModal();
+      });
+    });
+  }
+
+  const t2 = document.createElement('div');
+  t2.className = 'group-title';
+  t2.style.marginTop = '18px';
+  t2.textContent = 'Nueva incompatibilidad · Agente 1';
+  modalBody.appendChild(t2);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS, newIncA, id=>{ newIncA = id; drawIncompatModal(); });
+
+  const t3 = document.createElement('div');
+  t3.className = 'group-title';
+  t3.style.marginTop = '16px';
+  t3.textContent = 'Agente 2';
+  modalBody.appendChild(t3);
+  singleSelectGrid(modalBody, ALL_RANGO_IDS.filter(id=>id!==newIncA), newIncB, id=>{ newIncB = id; drawIncompatModal(); });
+
+  const t4 = document.createElement('div');
+  t4.className = 'group-title';
+  t4.style.marginTop = '16px';
+  t4.textContent = 'Días en que son incompatibles';
+  modalBody.appendChild(t4);
+
+  const alwaysChip = document.createElement('label');
+  alwaysChip.className = 'hab-chip' + (newIncAlways ? ' on' : '');
+  alwaysChip.style.cssText = 'margin-bottom:8px;display:inline-flex;';
+  alwaysChip.innerHTML = `<input type="checkbox" ${newIncAlways?'checked':''}> SIEMPRE INCOMPATIBLES`;
+  alwaysChip.querySelector('input').addEventListener('change', e=>{
+    newIncAlways = e.target.checked;
+    drawIncompatModal();
+  });
+  modalBody.appendChild(alwaysChip);
+
+  const dayGrid = document.createElement('div');
+  dayGrid.className = 'hab-grid';
+  if(newIncAlways) dayGrid.style.cssText = 'opacity:.35;pointer-events:none;';
+  DAY_NAMES.forEach(day=>{
+    const on = newIncDays.has(day);
+    const chip = document.createElement('label');
+    chip.className = 'hab-chip' + (on ? ' on' : '');
+    chip.innerHTML = `<input type="checkbox" ${on?'checked':''}> ${day}`;
+    chip.querySelector('input').addEventListener('change', e=>{
+      if(e.target.checked) newIncDays.add(day); else newIncDays.delete(day);
+      chip.classList.toggle('on', e.target.checked);
+    });
+    dayGrid.appendChild(chip);
+  });
+  modalBody.appendChild(dayGrid);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'secondary';
+  addBtn.style.cssText = 'margin-top:16px;padding:8px 14px;font-size:12.5px;';
+  addBtn.textContent = '+ Añadir incompatibilidad';
+  addBtn.addEventListener('click', ()=>{
+    if(!newIncA || !newIncB || newIncA===newIncB || (!newIncAlways && !newIncDays.size)) return;
+    modalIncompatDraft.push({a:newIncA, b:newIncB, days: newIncAlways ? [] : [...newIncDays], always: newIncAlways});
+    newIncA = null; newIncB = null; newIncDays = new Set(); newIncAlways = false;
+    drawIncompatModal();
+  });
+  modalBody.appendChild(addBtn);
+}
+
+// ---------- MODAL: HISTORIAL AGENTES ----------
+async function renderHistAgentesModal(){
+  modalMode = 'hist';
+  document.getElementById('modalTitle').textContent = 'Historial agentes';
+  document.getElementById('modalHint').textContent = 'Veces que cada agente ha hecho cada unidad en todos los cuadrantes guardados.';
+  document.getElementById('modalSave').style.display = 'none';
+  modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Cargando...</p>';
+  modalOverlay.style.display = 'flex';
+
+  await loadAllWeeks();
+  const acc = aggregateUnitHistory(null);
+
+  // Columnas: unidades en el orden de prioridad configurado + las que aparezcan en el historial + PICO al final
+  const seen = new Set();
+  Object.keys(acc).forEach(id=>Object.keys(acc[id]).forEach(u=>seen.add(u)));
+  const cols = unitPriority.filter(u=>seen.has(u) || UNIT_DEFS[u]);
+  seen.forEach(u=>{ if(!cols.includes(u) && u!=='PICO') cols.push(u); });
+  if(seen.has('PICO')) cols.push('PICO');
+
+  if(!Object.keys(acc).length){
+    modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Todavía no hay cuadrantes guardados de los que sacar el historial.</p>';
+    return;
+  }
+
+  let html = '<div style="overflow-x:auto;"><table style="font-size:11.5px;"><thead><tr><th>Agente</th>';
+  cols.forEach(u=>{ html += `<th>${u}</th>`; });
+  html += '<th>Total</th></tr></thead><tbody>';
+  ALL_RANGO_IDS.forEach(id=>{
+    const row = acc[id] || {};
+    let total = 0;
+    let cells = '';
+    cols.forEach(u=>{
+      const n = row[u] || 0;
+      total += n;
+      cells += `<td style="text-align:center;">${n || '—'}</td>`;
+    });
+    html += `<tr><td class="unit">${agentLabel(id)}</td>${cells}<td style="text-align:center;font-weight:600;">${total}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  modalBody.innerHTML = html;
+}
+
 document.getElementById('ajustesBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('ajustesPanel');
   panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
@@ -1341,6 +1632,10 @@ document.getElementById('lunaBtn').addEventListener('click', ()=>renderHabilitad
 document.getElementById('salaBtn').addEventListener('click', ()=>renderHabilitadosModal('sala'));
 document.getElementById('patrimonioBtn').addEventListener('click', renderPatrimonioModal);
 document.getElementById('pairsBtn').addEventListener('click', renderPairsModal);
+document.getElementById('incompatBtn').addEventListener('click', renderIncompatModal);
+document.getElementById('limitadosBtn').addEventListener('click', ()=>renderHabilitadosModal('limitados'));
+document.getElementById('namesBtn').addEventListener('click', renderNamesModal);
+document.getElementById('histBtn').addEventListener('click', renderHistAgentesModal);
 document.getElementById('dbBtn').addEventListener('click', renderPastModal);
 
 document.getElementById('modalSave').addEventListener('click', async ()=>{
@@ -1361,6 +1656,22 @@ document.getElementById('modalSave').addEventListener('click', async ()=>{
   } else if(modalMode === 'pairs'){
     preferredPairs = JSON.parse(JSON.stringify(modalPairsDraft));
     await savePreferredPairs();
+  } else if(modalMode === 'incompat'){
+    incompatiblePairs = JSON.parse(JSON.stringify(modalIncompatDraft));
+    await saveIncompatiblePairs();
+  } else if(modalMode === 'limitados'){
+    limitadosFisicos = [...modalHabDraft];
+    await saveLimitadosFisicos();
+  } else if(modalMode === 'names'){
+    const newNames = {};
+    modalBody.querySelectorAll('input[data-nameid]').forEach(inp=>{
+      const v = inp.value.trim();
+      if(v) newNames[inp.dataset.nameid] = v;
+    });
+    agentNames = newNames;
+    await saveAgentNames();
+    renderGroups();
+    if(currentData) renderResults(currentData);
   }
   closeModal();
 });
@@ -1435,6 +1746,7 @@ async function startApp(){
   loadAbsences();
   updateWeekTag();
   loadHistory();
+  loadAllWeeks(); // en segundo plano: alimenta la equidad entre semanas y el aviso de ausencias largas
 }
 
 async function init(){
