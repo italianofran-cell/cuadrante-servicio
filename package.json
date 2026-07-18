@@ -1,0 +1,11 @@
+{
+  "name": "cuadrante-servicio-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run-tests.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}

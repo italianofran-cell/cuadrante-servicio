@@ -509,6 +509,7 @@ tr:last-child td{border-bottom:none;}
 
   <div class="results-toolbar" id="resultsToolbar" style="display:none;">
     <button class="secondary" id="pdfBtn" type="button">Generar PDF</button>
+    <button class="ghost" id="versionsBtn" type="button">Versiones</button>
     <span class="sub" id="saveStatus"></span>
   </div>
 
@@ -1002,7 +1003,40 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
     if(!tryClaim(true)) tryClaim(false);
   });
 
-  unitPriority.forEach(unitKeyOrig=>{
+  // Reserva de habilitados: si tras esta unidad quedan por cubrir unidades restringidas (SALA, LUNA,
+  // PUERTA temporal) y apenas quedan habilitados "frescos" (que no las hayan hecho ya esta semana),
+  // evita gastarlos en unidades libres para no forzar huecos ni repeticiones.
+  function applyReserve(cand, idx){
+    const agg = {}; // doneKey -> {list, plazas}
+    for(let k=idx+1; k<unitPriority.length; k++){
+      const key = unitPriority[k];
+      const dd = UNIT_DEFS[key];
+      if(!dd) continue;
+      let list = null, dk = null;
+      if(dd.restrictType){ list = getRestrictList(dd.restrictType); dk = dd.unitKey || key; }
+      else if(dd.special==='puerta' && tempActive){ list = salaHab(); dk = 'PUERTA'; }
+      if(!list) continue;
+      if(!agg[dk]) agg[dk] = {list, plazas:0};
+      agg[dk].plazas += dd.count;
+    }
+    let pref = cand;
+    Object.keys(agg).forEach(dkey=>{
+      const r = agg[dkey];
+      const enPool = pool.filter(id=>r.list.includes(id));
+      // "frescos": aún no han hecho esa unidad esta semana (evita repeticiones)
+      const frescos = enPool.filter(id=>!(doneMap[id] && doneMap[id].has(dkey)));
+      const protegidos = new Set();
+      if(frescos.length <= r.plazas) frescos.forEach(x=>protegidos.add(x));
+      if(enPool.length <= r.plazas) enPool.forEach(x=>protegidos.add(x)); // cobertura: no dejar la unidad sin gente
+      if(protegidos.size){
+        const alt = pref.filter(id=>!protegidos.has(id));
+        if(alt.length) pref = alt;
+      }
+    });
+    return pref;
+  }
+
+  unitPriority.forEach((unitKeyOrig, unitIdx)=>{
     const defOrig = UNIT_DEFS[unitKeyOrig];
     if(!defOrig) return; // clave desconocida (config corrupta), se ignora
     let displayKey = unitKeyOrig;
@@ -1034,7 +1068,7 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
         else {
           let cand = pool.filter(id=>!salaHab().includes(id));
           if(!cand.length) cand = [...pool];
-          ag = chooseFair(cand, 'AYUNTAMIENTO', 'AYUNTAMIENTO', agents);
+          ag = chooseFair(applyReserve(cand, unitIdx), 'AYUNTAMIENTO', 'AYUNTAMIENTO', agents);
         }
       } else if(u.special==='almudi'){
         // Hasta el 01/09/2026: si el 724 trabaja ese día, ALMUDI es suyo (por delante del titular)
@@ -1044,7 +1078,7 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
         else {
           let cand = pool.filter(id=>!salaHab().includes(id));
           if(!cand.length) cand = [...pool];
-          ag = chooseFair(cand, 'ALMUDI', 'ALMUDI', agents);
+          ag = chooseFair(applyReserve(cand, unitIdx), 'ALMUDI', 'ALMUDI', agents);
         }
       } else if(u.special==='puerta'){
         let cand;
@@ -1055,13 +1089,13 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
           cand = pool.filter(id=>!salaHab().includes(id));
           if(!cand.length) cand = [...pool];
         }
-        ag = chooseFair(cand, 'PUERTA', 'PUERTA', agents);
+        ag = chooseFair(applyReserve(cand, unitIdx), 'PUERTA', 'PUERTA', agents);
       } else if(u.restrictType){
         const list = getRestrictList(u.restrictType);
         const cand = pool.filter(id=>list.includes(id));
         ag = chooseFair(cand, u.unitKey || unitKeyOrig, unitKeyOrig, agents);
       } else {
-        ag = chooseFair([...pool], unitKeyOrig, unitKeyOrig, agents);
+        ag = chooseFair(applyReserve([...pool], unitIdx), unitKeyOrig, unitKeyOrig, agents);
       }
       agents.push(ag || 'SIN CUBRIR');
       locked.push(fijo);
@@ -1319,19 +1353,46 @@ function setAgentAt(r, id){
   const d = currentData.days[r.day];
   if(r.pico !== null) d.pico[r.pico] = id; else d.assignments[r.ai].agents[r.slot] = id;
 }
-function incompatWarningsAt(r, dayName){
-  if(r.pico !== null) return [];
-  const d = currentData.days[r.day];
-  const a = d.assignments[r.ai];
-  const agents = a.agents.filter(x=>x && x!=='SIN CUBRIR');
+// Comprueba si el agente colocado en la posición r incumple alguna regla (aviso, no bloqueo)
+function swapWarnings(r){
+  if(r.pico !== null) return []; // el PICO no tiene restricciones
+  const day = currentData.days[r.day];
+  const a = day.assignments[r.ai];
+  const ag = a.agents[r.slot];
+  if(ag === 'SIN CUBRIR') return [];
   const warns = [];
-  for(let i=0;i<agents.length;i++){
-    for(let j=i+1;j<agents.length;j++){
-      if(isIncompatible(agents[i], agents[j], dayName)){
-        warns.push(`${a.unit}: ${agentLabel(agents[i])} y ${agentLabel(agents[j])}`);
-      }
-    }
-  }
+  const unitOrig = normalizeUnitName(a.unit);
+  const dayName = day.dayName;
+  const tempActive = new Date(day.date + 'T00:00:00') < TEMP_RULES_CUTOFF;
+
+  a.agents.forEach((p, i)=>{
+    if(i === r.slot || p === 'SIN CUBRIR') return;
+    if(isIncompatible(ag, p, dayName)) warns.push(agentLabel(ag) + ' y ' + agentLabel(p) + ' son INCOMPATIBLES el ' + dayName + ' y quedan juntos en ' + a.unit);
+  });
+  if(limitadosFisicos.includes(ag) && !UNIDADES_LIMITADOS.includes(unitOrig))
+    warns.push(agentLabel(ag) + ' es LIMITADO FÍSICO y no debería hacer ' + a.unit);
+  if(tempActive && ag === '724' && unitOrig !== 'ALMUDI')
+    warns.push('El 724 solo debería hacer ALMUDI hasta el 01/09/2026');
+  const nombre = (agentNames[ag]||'').trim().toLowerCase().split(/\s+/)[0];
+  if((nombre === 'victoria' || nombre === 'virginia') && (unitOrig === 'AYUNTAMIENTO' || unitOrig === 'ALMUDI' || unitOrig === 'PUERTA'))
+    warns.push(agentLabel(ag) + ' no debería ir a Patrimonio (' + a.unit + ')');
+  if(unitOrig === 'SALA 1' && !sala1Hab().includes(ag))
+    warns.push(agentLabel(ag) + ' no está habilitado para SALA 1');
+  if(unitOrig === 'SALA 2' && !salaHab().includes(ag))
+    warns.push(agentLabel(ag) + ' no está habilitado para ' + a.unit);
+  if(unitOrig === 'LUNA' && !lunaHab().includes(ag))
+    warns.push(agentLabel(ag) + ' no está habilitado para LUNA');
+
+  // Repetición de unidad dentro de la semana
+  const dkOf = u => (UNIT_DEFS[u] && UNIT_DEFS[u].unitKey) || u;
+  const dk = dkOf(unitOrig);
+  currentData.days.forEach((d2, i2)=>{
+    if(i2 === r.day || d2.skip) return;
+    (d2.assignments||[]).forEach(a2=>{
+      if(dkOf(normalizeUnitName(a2.unit)) === dk && a2.agents.includes(ag))
+        warns.push(agentLabel(ag) + ' repite ' + a.unit + ' esta semana (ya la hace el ' + d2.dayName + ')');
+    });
+  });
   return warns;
 }
 function doSwap(r1, r2){
@@ -1341,18 +1402,11 @@ function doSwap(r1, r2){
   setAgentAt(r2, a1);
   currentData.generatedAt = new Date().toISOString();
   renderResults(currentData);
-  const dayName = currentData.days[r1.day].dayName;
-  const seenUnits = new Set();
-  const warns = [];
-  [r1, r2].forEach(r=>{
-    if(r.pico !== null || seenUnits.has(r.ai)) return;
-    seenUnits.add(r.ai);
-    warns.push(...incompatWarningsAt(r, dayName));
-  });
-  document.getElementById('saveStatus').textContent = 'Intercambio manual: ' + agentLabel(a1) + ' ⇄ ' + agentLabel(a2);
+  const warns = [...new Set([...swapWarnings(r1), ...swapWarnings(r2)])];
+  document.getElementById('saveStatus').textContent = 'Intercambio manual: ' + agentLabel(a1) + ' ⇄ ' + agentLabel(a2) + (warns.length ? ' ⚠️' : '');
   saveCurrentWeek(currentData);
   if(warns.length){
-    alert('⚠️ Este intercambio deja una pareja incompatible en la misma unidad:\n\n' + warns.join('\n'));
+    alert('El intercambio se ha hecho, pero incumple estas reglas:\n\n⚠️ ' + warns.join('\n⚠️ ') + '\n\nSi no era lo que querías, vuelve a intercambiarlos.');
   }
 }
 const resultsEl = document.getElementById('results');
@@ -1453,6 +1507,20 @@ function regenerateFromDay(data, dayIndex){
 
 let currentData = null;
 
+// Guarda una copia en el historial de versiones de la semana (se conservan las últimas 10)
+async function pushVersion(data){
+  try{
+    let vers = [];
+    try{
+      const r = await appStorage.get('cuadrante_ver:' + data.monday, false);
+      if(r && r.value) vers = JSON.parse(r.value);
+    }catch(e){}
+    vers.push({savedAt: new Date().toISOString(), data: JSON.parse(JSON.stringify(data))});
+    if(vers.length > 10) vers = vers.slice(-10);
+    await appStorage.set('cuadrante_ver:' + data.monday, JSON.stringify(vers), false);
+  }catch(e){ console.error(e); }
+}
+
 async function saveCurrentWeek(data){
   try{
     await appStorage.set('cuadrante:' + data.monday, JSON.stringify(data), false);
@@ -1464,6 +1532,7 @@ async function saveCurrentWeek(data){
       index.sort();
       await appStorage.set('cuadrante_index', JSON.stringify(index), false);
     }
+    await pushVersion(data);
     document.getElementById('saveStatus').textContent = 'Guardado para revisión futura ✓';
     allWeeksCache[data.monday] = data;
     checkLongAbsences();
@@ -1473,6 +1542,56 @@ async function saveCurrentWeek(data){
     console.error(e);
   }
 }
+
+// ---------- MODAL: VERSIONES DE LA SEMANA ----------
+async function renderVersionsModal(){
+  if(!currentData){ return; }
+  modalMode = 'versions';
+  const monday = currentData.monday;
+  document.getElementById('modalTitle').textContent = 'Versiones · semana del ' + fmtShort(monday);
+  document.getElementById('modalHint').textContent = 'Se guardan las últimas 10 versiones. Restaurar crea a su vez una versión nueva, así que nunca pierdes nada.';
+  document.getElementById('modalSave').style.display = 'none';
+  modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Cargando...</p>';
+  modalOverlay.style.display = 'flex';
+
+  let vers = [];
+  try{
+    const r = await appStorage.get('cuadrante_ver:' + monday, false);
+    if(r && r.value) vers = JSON.parse(r.value);
+  }catch(e){}
+
+  if(!vers.length){
+    modalBody.innerHTML = '<p class="sub" style="margin-top:0;">Todavía no hay versiones guardadas de esta semana.</p>';
+    return;
+  }
+  modalBody.innerHTML = '';
+  vers.slice().reverse().forEach((v, i)=>{
+    const fecha = new Date(v.savedAt);
+    const esActual = i === 0;
+    const conTiro = v.data.tiro && v.data.tiro.length ? ' · 🎯 con tiro' : '';
+    const row = document.createElement('div');
+    row.className = 'unit-row';
+    row.innerHTML = `
+      <span>${fecha.toLocaleDateString('es-ES')} ${fecha.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}
+        <span class="sub">${esActual ? ' · versión actual' : ''}${conTiro}</span></span>`;
+    if(!esActual){
+      const btn = document.createElement('button');
+      btn.textContent = 'Restaurar';
+      btn.style.cssText = 'padding:5px 12px;font-size:11.5px;';
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('¿Restaurar la versión del ' + fecha.toLocaleDateString('es-ES') + ' ' + fecha.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) + '? La versión actual quedará guardada en el historial.')) return;
+        currentData = JSON.parse(JSON.stringify(v.data));
+        renderResults(currentData);
+        document.getElementById('saveStatus').textContent = 'Versión restaurada.';
+        await saveCurrentWeek(currentData);
+        closeModal();
+      });
+      row.appendChild(btn);
+    }
+    modalBody.appendChild(row);
+  });
+}
+document.getElementById('versionsBtn').addEventListener('click', renderVersionsModal);
 
 async function loadHistory(){
   try{
@@ -1504,6 +1623,7 @@ async function loadHistory(){
       delBtn.textContent = 'Eliminar';
       delBtn.addEventListener('click', async ()=>{
         try{ await appStorage.delete('cuadrante:' + mondayIso, false); }catch(e){}
+        try{ await appStorage.delete('cuadrante_ver:' + mondayIso, false); }catch(e){}
         const newIndex = index.filter(x=>x!==mondayIso);
         await appStorage.set('cuadrante_index', JSON.stringify(newIndex), false);
         loadHistory();
@@ -1926,6 +2046,7 @@ async function renderPastModal(){
     delBtn.addEventListener('click', async ()=>{
       if(!confirm('¿Eliminar el cuadrante de la semana del ' + fmtDate(dateObj) + '? Esta acción no se puede deshacer.')) return;
       try{ await appStorage.delete('cuadrante:' + mondayIso, false); }catch(e){}
+      try{ await appStorage.delete('cuadrante_ver:' + mondayIso, false); }catch(e){}
       const newIndex = index.filter(x=>x!==mondayIso);
       await appStorage.set('cuadrante_index', JSON.stringify(newIndex), false);
       loadHistory();
