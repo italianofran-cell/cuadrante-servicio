@@ -242,21 +242,23 @@ tr:last-child td{border-bottom:none;}
 }
 .results-header .range{color:var(--muted);font-size:13px;margin-top:2px;}
 @media print{
-  @page{size:A4 portrait;margin:10mm;}
+  @page{size:A4 portrait;margin:8mm;}
   body{background:#fff !important;color:#000;padding:0;}
   body *{visibility:hidden;}
   #results, #results *{visibility:visible;}
-  #results{position:absolute;left:0;top:0;width:100%;}
+  /* Todo en un único folio: días sin servicio ocultos y días en 2 columnas */
+  #results{position:absolute;left:0;top:0;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:3mm;align-items:start;}
   .noprint{display:none !important;}
-  .results-header{border:1px solid #888;background:#fff;border-radius:0;padding:6px 12px;margin-bottom:6px;}
-  .results-header .week-num{color:#000;font-size:15px;}
-  .results-header .range{color:#000;font-size:10px;margin-top:0;}
-  .day-card{border:1px solid #888;border-radius:0;background:#fff;break-inside:avoid;margin-bottom:6px;}
-  .day-head{background:#e5e5e5 !important;padding:4px 12px;border-bottom:1px solid #888;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .skip-day{display:none !important;}
+  .results-header{grid-column:1 / -1;border:1px solid #888;background:#fff;border-radius:0;padding:4px 10px;margin-bottom:0;}
+  .results-header .week-num{color:#000;font-size:13px;}
+  .results-header .range{color:#000;font-size:9px;margin-top:0;}
+  .day-card{border:1px solid #888;border-radius:0;background:#fff;break-inside:avoid;margin-bottom:0;}
+  .day-head{background:#e5e5e5 !important;padding:3px 9px;border-bottom:1px solid #888;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .day-head .d{color:#000;font-size:11.5px;}
-  .day-head .sys{color:#222;font-size:9px;}
-  table{font-size:9.5px;}
-  td,th{padding:2px 12px;border-bottom:1px solid #bbb;color:#000;}
+  .day-head .sys{color:#222;font-size:8.5px;}
+  table{font-size:10.5px;}
+  td,th{padding:2.5px 9px;border-bottom:1px solid #bbb;color:#000;}
   th{color:#000;font-size:8.5px;}
   .unit{color:#000;}
   .agent{color:#000;}
@@ -264,7 +266,7 @@ tr:last-child td{border-bottom:none;}
   .pico-row{background:#efefef !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .pico-row .unit{color:#000;}
   .footnote{display:none;}
-  .skip-note{color:#222;font-size:9px;padding:3px 12px;}
+  .skip-note{display:none;}
 }
 </style>
 </head>
@@ -872,7 +874,7 @@ function renderResults(data){
   data.days.forEach((d, dayIndex)=>{
     const dateObj = new Date(d.date + 'T00:00:00');
     const card = document.createElement('div');
-    card.className='day-card';
+    card.className='day-card' + (d.skip ? ' skip-day' : '');
     if(d.skip){
       card.innerHTML = `
         <div class="day-head">
