@@ -1,0 +1,12 @@
+{
+  "name": "Cuadrante de Servicio",
+  "short_name": "Cuadrante",
+  "description": "Generador de cuadrantes de servicio semanales",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f141b",
+  "theme_color": "#0f141b",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
