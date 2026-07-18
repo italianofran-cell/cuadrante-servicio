@@ -736,7 +736,9 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
           ag = chooseFair(cand, 'AYUNTAMIENTO', 'AYUNTAMIENTO', agents);
         }
       } else if(u.special==='almudi'){
-        if(fijoDisponible(fijosPatrimonio.almudiTitular,'ALMUDI')) ag = commit(fijosPatrimonio.almudiTitular,'ALMUDI');
+        // Hasta el 01/09/2026: si el 724 trabaja ese día, ALMUDI es suyo (por delante del titular)
+        if(tempActive && pool.includes('724')) ag = commit('724','ALMUDI');
+        else if(fijoDisponible(fijosPatrimonio.almudiTitular,'ALMUDI')) ag = commit(fijosPatrimonio.almudiTitular,'ALMUDI');
         else if(fijoDisponible(fijosPatrimonio.almudiBackup,'ALMUDI')) ag = commit(fijosPatrimonio.almudiBackup,'ALMUDI');
         else {
           let cand = pool.filter(id=>!salaHab().includes(id));
