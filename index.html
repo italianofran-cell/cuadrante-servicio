@@ -295,6 +295,7 @@ tr:last-child td{border-bottom:none;}
   #results{position:absolute;left:0;top:0;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:3mm;align-items:start;}
   .noprint{display:none !important;}
   .skip-day{display:none !important;}
+  .row-empty{display:none !important;}
   .results-header{grid-column:1 / -1;border:1px solid #888;background:#fff;border-radius:0;padding:4px 10px;margin-bottom:0;}
   .results-header .week-num{color:#000;font-size:13px;}
   .results-header .range{color:#000;font-size:9px;margin-top:0;}
@@ -932,7 +933,9 @@ function renderResults(data){
         if(ag==='SIN CUBRIR') return '<span class="empty">SIN CUBRIR</span>';
         return `<span class="agent">${agentLabel(ag)}</span>`;
       }).join(', ');
-      rows += `<tr><td class="unit">${a.unit}</td><td>${names}</td></tr>`;
+      // Unidad sin ningún efectivo: visible en pantalla pero oculta al imprimir (ahorra espacio en el PDF)
+      const allEmpty = a.agents.every(ag=>ag==='SIN CUBRIR');
+      rows += `<tr${allEmpty?' class="row-empty"':''}><td class="unit">${a.unit}</td><td>${names}</td></tr>`;
     });
     if(d.pico && d.pico.length){
       rows += `<tr class="pico-row"><td class="unit">PICO</td><td>${d.pico.map(id=>agentLabel(id)).join(', ')}</td></tr>`;
