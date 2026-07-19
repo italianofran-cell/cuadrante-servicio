@@ -34,7 +34,7 @@ w.confirm = () => true;
 w.eval(appScript + `
 ;window.__t = {
   buildWeekData, getISOWeek, isoDate, workingSetsForWeek, normalizeUnitName,
-  agentState, isAbsentOn,
+  agentState, isAbsentOn, mondaysOfMonth,
   getState(){ return {UNIT_DEFS, unitPriority, habilitadosSala, habilitadosLuna, fijosPatrimonio,
     G43_RANGO, G52_RANGO, G2, ALL_RANGO_IDS, DAY_NAMES, TEMP_RULES_CUTOFF, UNIDADES_LIMITADOS}; },
   set(o){
@@ -273,6 +273,21 @@ for (const monday of [SEMANA_B, SEMANA_A]){
     const margen = Math.max(0, salaSlots - habilitados) + 1;
     ok(repes <= margen, `${monday}: ${repes} repeticiones en SALA/PUERTA (máximo tolerado ${margen})`);
   }
+}
+
+// ---------- 11. Generar mes: semanas que cubren el mes completo ----------
+console.log('11. Generar mes: bloque de lunes correcto');
+{
+  // Julio 2026: del lunes 29/06 al domingo 02/08 (ejemplo del requisito)
+  const jul = t.mondaysOfMonth(new Date('2026-07-15T00:00:00')).map(d => t.isoDate(d));
+  ok(JSON.stringify(jul) === JSON.stringify(['2026-06-29','2026-07-06','2026-07-13','2026-07-20','2026-07-27']),
+     `julio 2026: lunes esperados 29/06..27/07, obtenidos ${jul.join(', ')}`);
+  const finJul = new Date('2026-07-27T00:00:00'); finJul.setDate(finJul.getDate() + 6);
+  ok(t.isoDate(finJul) === '2026-08-02', 'julio 2026: el bloque debe terminar el domingo 02/08');
+  // Febrero 2027: empieza en lunes 01/02 y termina en domingo 28/02 (mes exacto)
+  const feb = t.mondaysOfMonth(new Date('2027-02-10T00:00:00')).map(d => t.isoDate(d));
+  ok(JSON.stringify(feb) === JSON.stringify(['2027-02-01','2027-02-08','2027-02-15','2027-02-22']),
+     `febrero 2027: lunes esperados 01..22/02, obtenidos ${feb.join(', ')}`);
 }
 
 // ---------- resumen ----------

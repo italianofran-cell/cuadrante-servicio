@@ -294,8 +294,8 @@ tr:last-child td{border-bottom:none;}
   .chip input, .hab-chip input{transform:scale(1.2);}
   /* Inputs a 16px: evita el zoom automático de iOS al enfocar */
   input[type=date], input[type=email], input[type=password], input[type=text], input[type=number]{font-size:16px !important;}
-  /* Botón principal a ancho completo */
-  #genBtn{width:100%;padding:15px 22px;font-size:15px;}
+  /* Botones principales a ancho completo */
+  #genBtn, #genMesBtn{width:100%;padding:15px 22px;font-size:15px;}
   #resultsToolbar button{flex:1;}
   #weekNav{display:none;gap:8px;}
   #weekNav[style*="flex"]{display:grid !important;grid-template-columns:1fr 1fr;}
@@ -508,7 +508,8 @@ tr:last-child td{border-bottom:none;}
   </div>
 
   <div class="row" style="margin-bottom:20px;">
-    <button id="genBtn">Generar cuadrante</button>
+    <button id="genBtn">Generar semana</button>
+    <button id="genMesBtn" type="button">Generar mes (bloque)</button>
   </div>
 
   <div class="panel" id="historyPanel" style="display:none;">
@@ -1798,6 +1799,52 @@ document.getElementById('tiroConfirmBtn').addEventListener('click', ()=>{
   if(pendingGenInfo) doGenerate(pendingGenInfo, [...tiroSelection]);
   pendingGenInfo = null;
 });
+
+// ---------- GENERAR MES (BLOQUE) ----------
+// Lunes de las semanas que cubren el mes completo: desde el lunes de la semana en que empieza
+// el mes hasta la semana que contiene su último día (esa semana termina en domingo).
+// Ej.: julio 2026 → semanas del 29/06 al 02/08.
+function mondaysOfMonth(anyDate){
+  const y = anyDate.getFullYear(), m = anyDate.getMonth();
+  const last = new Date(y, m + 1, 0);
+  const mondays = [];
+  for(let d = getMonday(new Date(y, m, 1)); d <= last; d.setDate(d.getDate() + 7)){
+    mondays.push(new Date(d));
+  }
+  return mondays;
+}
+
+async function generarMes(){
+  const val = document.getElementById('datePicker').value;
+  if(!val) return;
+  const base = new Date(val + 'T00:00:00');
+  const mondays = mondaysOfMonth(base);
+  const finBloque = new Date(mondays[mondays.length - 1]);
+  finBloque.setDate(finBloque.getDate() + 6);
+  const nombreMes = base.toLocaleDateString('es-ES', {month:'long', year:'numeric'});
+  if(!confirm(`¿Generar el mes de ${nombreMes} completo?\n\nSe generarán ${mondays.length} semanas: del ${fmtDate(mondays[0])} al ${fmtDate(finBloque)}.\n\nLas semanas ya guardadas en ese rango se sobrescribirán (sus versiones quedan en el historial de "Versiones").\n\nEl tiro/táser no se pregunta en bloque: si una semana lleva tiro, regenérala después con "Generar semana".`)) return;
+
+  const btn = document.getElementById('genMesBtn');
+  btn.disabled = true;
+  try{
+    for(let i = 0; i < mondays.length; i++){
+      const monday = mondays[i];
+      document.getElementById('saveStatus').textContent = `Generando mes... semana ${i+1} de ${mondays.length}`;
+      const weekNum = getISOWeek(monday);
+      const weekType = ((weekNum - 29) % 2 + 2) % 2 === 0 ? 'A' : 'B';
+      currentData = buildWeekData(monday, weekType);
+      renderResults(currentData);
+      await saveCurrentWeek(currentData);
+    }
+    // muestra la primera semana del bloque
+    await goToWeek(mondays[0], false);
+    document.getElementById('saveStatus').textContent =
+      `Mes generado ✓ ${mondays.length} semanas (${fmtDate(mondays[0])} — ${fmtDate(finBloque)}). Navega con "Generar siguiente semana ▶".`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('genMesBtn').addEventListener('click', generarMes);
 document.getElementById('pdfBtn').addEventListener('click', ()=>{
   window.print();
 });
@@ -2142,14 +2189,14 @@ function drawPairsModal(){
   if(modalPairsDraft.length){
     const t = document.createElement('div');
     t.className = 'group-title';
-    t.textContent = 'Parejas configuradas';
+    t.textContent = 'Registro de parejas preferentes (' + modalPairsDraft.length + ')';
     modalBody.appendChild(t);
     modalPairsDraft.forEach((p, i)=>{
       const row = document.createElement('div');
       row.className = 'unit-row';
       row.innerHTML = `
         <span>${labelOf(p.a)} + ${labelOf(p.b)}
-          <span class="sub"> · ${p.days.join(', ')}</span></span>
+          <span class="sub"> · ${p.days.join(', ')}${p.alta ? ' · registrada el ' + fmtShort(p.alta) : ''}</span></span>
         <span class="arrows"><button type="button" class="del" data-delpair="${i}">Eliminar</button></span>`;
       modalBody.appendChild(row);
     });
@@ -2202,7 +2249,7 @@ function drawPairsModal(){
   addBtn.textContent = '+ Añadir pareja';
   addBtn.addEventListener('click', ()=>{
     if(!newPairA || !newPairB || newPairA===newPairB || !modalPairNewDays.size) return;
-    modalPairsDraft.push({a:newPairA, b:newPairB, days:[...modalPairNewDays]});
+    modalPairsDraft.push({a:newPairA, b:newPairB, days:[...modalPairNewDays], alta: isoDate(new Date())});
     newPairA = null; newPairB = null; modalPairNewDays = new Set();
     drawPairsModal();
   });
@@ -2248,14 +2295,14 @@ function drawIncompatModal(){
   if(modalIncompatDraft.length){
     const t = document.createElement('div');
     t.className = 'group-title';
-    t.textContent = 'Incompatibilidades configuradas';
+    t.textContent = 'Registro de parejas incompatibles (' + modalIncompatDraft.length + ')';
     modalBody.appendChild(t);
     modalIncompatDraft.forEach((p, i)=>{
       const row = document.createElement('div');
       row.className = 'unit-row';
       row.innerHTML = `
         <span>${labelOf(p.a)} + ${labelOf(p.b)}
-          <span class="sub"> · ${p.always ? 'SIEMPRE INCOMPATIBLES' : p.days.join(', ')}</span></span>
+          <span class="sub"> · ${p.always ? 'SIEMPRE INCOMPATIBLES' : p.days.join(', ')}${p.alta ? ' · registrada el ' + fmtShort(p.alta) : ''}</span></span>
         <span class="arrows"><button type="button" class="del" data-delinc="${i}">Eliminar</button></span>`;
       modalBody.appendChild(row);
     });
@@ -2320,7 +2367,7 @@ function drawIncompatModal(){
   addBtn.textContent = '+ Añadir incompatibilidad';
   addBtn.addEventListener('click', ()=>{
     if(!newIncA || !newIncB || newIncA===newIncB || (!newIncAlways && !newIncDays.size)) return;
-    modalIncompatDraft.push({a:newIncA, b:newIncB, days: newIncAlways ? [] : [...newIncDays], always: newIncAlways});
+    modalIncompatDraft.push({a:newIncA, b:newIncB, days: newIncAlways ? [] : [...newIncDays], always: newIncAlways, alta: isoDate(new Date())});
     newIncA = null; newIncB = null; newIncDays = new Set(); newIncAlways = false;
     drawIncompatModal();
   });
