@@ -2431,7 +2431,7 @@ const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','A
 function renderCalendarModal(){
   modalMode = 'calendar';
   document.getElementById('modalTitle').textContent = 'Calendario de ausencias';
-  document.getElementById('modalHint').textContent = 'Días con alguna ausencia programada. Dos o más agentes ausentes el mismo día se resaltan en rojo.';
+  document.getElementById('modalHint').textContent = 'Sombreado: días con alguna ausencia. EN ROJO: días con el 60% o más de la plantilla ausente.';
   document.getElementById('modalSave').style.display = 'none';
   modalOverlay.querySelector('.modal-box').classList.add('wide');
   modalOverlay.style.display = 'flex';
@@ -2439,6 +2439,7 @@ function renderCalendarModal(){
 }
 function drawCalendarModal(){
   const ids = Object.keys(agentStatus);
+  const plantilla = Object.keys(AGENTS).length;
   const hoy = isoDate(new Date());
 
   let html = `<div class="row" style="margin-bottom:14px;align-items:center;">
@@ -2459,22 +2460,28 @@ function drawCalendarModal(){
       const dateObj = new Date(calYear, m, day);
       const iso = isoDate(dateObj);
       const absentIds = ids.filter(id=>isAbsentOn(id, dateObj));
+      const pct = absentIds.length / plantilla;
       let cls = 'cal-day';
       if(iso === hoy) cls += ' today';
-      if(absentIds.length === 1) cls += ' one';
-      else if(absentIds.length >= 2) cls += ' many';
-      const title = absentIds.length ? absentIds.map(id=>agentLabel(id)).join(', ') : '';
+      if(pct >= 0.6) cls += ' many'; // 60% o más de la plantilla ausente → rojo
+      else if(absentIds.length >= 1) cls += ' one';
+      let title = absentIds.length ? absentIds.map(id=>agentLabel(id)).join(', ') : '';
+      if(pct >= 0.6) title = '⚠️ ' + absentIds.length + ' de ' + plantilla + ' ausentes (' + Math.round(pct*100) + '%): ' + title;
       html += `<span class="${cls}"${title ? ` title="${title.replace(/"/g,'&quot;')}"` : ''}>${day}</span>`;
     }
     html += '</div></div>';
   }
   html += '</div>';
 
-  const entries = ids.map(id=>({id, e: agentStatus[id]})).filter(x=>x.e).sort((a,b)=>a.e.desde.localeCompare(b.e.desde));
+  const entries = [];
+  ids.forEach(id=>{
+    intervalosDe(id).forEach(iv=>entries.push({id, iv}));
+  });
+  entries.sort((a,b)=>a.iv.desde.localeCompare(b.iv.desde));
   if(entries.length){
     html += '<div style="margin-top:18px;"><div class="group-title">Ausencias registradas</div>';
-    entries.forEach(({id,e})=>{
-      html += `<div class="unit-row"><span>${agentLabel(id)} <span class="sub">desde ${fmtShort(e.desde)}${e.vuelve ? ' hasta ' + fmtShort(e.vuelve) : ' · sin fecha de vuelta'}</span></span></div>`;
+    entries.forEach(({id, iv})=>{
+      html += `<div class="unit-row"><span>${agentLabel(id)} <span class="sub"><b>${iv.motivo || 'AUSENCIA'}</b> · desde ${fmtShort(iv.desde)}${iv.vuelve ? ' hasta ' + fmtShort(iv.vuelve) : ' · sin fecha de vuelta'}</span></span></div>`;
     });
     html += '</div>';
   } else {
