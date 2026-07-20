@@ -404,7 +404,7 @@ tr:last-child td{border-bottom:none;}
     <button class="secondary" id="limitadosBtn" type="button">Limitados físicos</button>
     <button class="secondary" id="namesBtn" type="button">Nombres de agentes</button>
     <button class="secondary" id="histBtn" type="button">Historial agentes</button>
-    <button class="secondary" id="tiroCalBtn" type="button">Tiro y táser</button>
+    <button class="secondary" id="tiroCalBtn" type="button">Calendario tiro y táser</button>
     <button class="secondary" id="tiroHistBtn" type="button">Historial tiro/táser</button>
     <button class="secondary" id="calendarBtn" type="button">Calendario ausencias</button>
   </div>
@@ -1717,7 +1717,13 @@ async function goToWeek(monday, autoGenerate){
     renderResults(currentData);
     document.getElementById('saveStatus').textContent = 'Cuadrante guardado de la semana ' + (currentData.weekNum || info.weekNum);
   } else if(autoGenerate){
+    // También aquí se consulta el calendario de prácticas (tiro lunes / táser jueves)
+    const pract = practicasDeSemana(monday, info.weekType);
+    let tiroAgents = null;
+    if(pract.tiro) tiroAgents = await pedirAgentesTiro(pract.tiro);
     currentData = buildWeekData(monday, info.weekType);
+    if(tiroAgents && tiroAgents.length) currentData.tiro = tiroAgents;
+    if(pract.taser) currentData.taser = true;
     renderResults(currentData);
     document.getElementById('saveStatus').textContent = 'Generando...';
     saveCurrentWeek(currentData);
@@ -2677,8 +2683,9 @@ let modalPractDraft = null;
 function renderTiroCalModal(){
   modalMode = 'tirocal';
   modalPractDraft = new Set(practiceDays);
-  document.getElementById('modalTitle').textContent = 'Tiro y táser · calendario de prácticas';
-  document.getElementById('modalHint').textContent = 'Pulsa un LUNES para marcar TIRO (ámbar) o un JUEVES para TÁSER (azul); vuelve a pulsar para quitarlo. Pulsa "Guardar cambios" al terminar.';
+  document.getElementById('modalTitle').textContent = 'Calendario tiro y táser';
+  document.getElementById('modalHint').textContent = 'Pulsa un LUNES para marcar TIRO (ámbar) o un JUEVES para TÁSER (azul); vuelve a pulsar para quitarlo. Los cambios se guardan solos.';
+  document.getElementById('modalSave').style.display = 'none';
   modalOverlay.querySelector('.modal-box').classList.add('wide');
   modalOverlay.style.display = 'flex';
   drawTiroCalModal();
@@ -2732,6 +2739,8 @@ function drawTiroCalModal(){
     el.addEventListener('click', ()=>{
       const iso = el.dataset.iso;
       if(modalPractDraft.has(iso)) modalPractDraft.delete(iso); else modalPractDraft.add(iso);
+      practiceDays = [...modalPractDraft].sort(); // guardado automático
+      savePracticeDays();
       drawTiroCalModal();
     });
   });
@@ -2790,9 +2799,6 @@ document.getElementById('modalSave').addEventListener('click', async ()=>{
     await saveAgentNames();
     renderGroups();
     if(currentData) renderResults(currentData);
-  } else if(modalMode === 'tirocal'){
-    practiceDays = [...modalPractDraft].sort();
-    await savePracticeDays();
   }
   closeModal();
 });
