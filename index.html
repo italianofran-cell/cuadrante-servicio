@@ -466,6 +466,22 @@ tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
+  <div id="waOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box" style="max-width:460px;">
+      <div class="modal-head"><span>💬 Compartir cuadrante</span></div>
+      <div class="modal-body">
+        <label>¿Qué quieres compartir?</label><br>
+        <select id="waScope" style="width:100%;margin:6px 0 12px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:9px 10px;border-radius:6px;font-family:var(--font-mono);font-size:13px;"></select>
+        <textarea id="waTexto" readonly style="width:100%;height:210px;background:var(--panel-2);border:1px solid var(--line);color:var(--text);padding:10px;border-radius:6px;font-family:var(--font-mono);font-size:12px;resize:vertical;"></textarea>
+        <div class="row" style="margin-top:14px;">
+          <button id="waSendBtn" type="button">Enviar por WhatsApp</button>
+          <button class="secondary" id="waCopyBtn" type="button">Copiar texto</button>
+          <button class="ghost" id="waCloseBtn" type="button">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="modalOverlay" class="modal-overlay" style="display:none;">
     <div class="modal-box">
       <div class="modal-head">
@@ -486,7 +502,7 @@ tr:last-child td{border-bottom:none;}
     <div class="row">
       <div>
         <label>Elige cualquier día de la semana a cuadrar</label><br>
-        <input type="date" id="datePicker" value="2026-07-13">
+        <input type="date" id="datePicker">
       </div>
       <div class="week-tag" id="weekTag">—</div>
     </div>
@@ -524,6 +540,7 @@ tr:last-child td{border-bottom:none;}
   <div class="results-toolbar" id="resultsToolbar" style="display:none;">
     <button class="secondary" id="pdfBtn" type="button">Generar PDF</button>
     <button class="secondary" id="pdfMesBtn" type="button">PDF del mes</button>
+    <button class="secondary" id="waBtn" type="button">Compartir 💬</button>
     <button class="ghost" id="versionsBtn" type="button">Versiones</button>
     <span class="sub" id="saveStatus"></span>
   </div>
@@ -1975,6 +1992,75 @@ async function printMonthBlock(){
   window.print();
 }
 document.getElementById('pdfMesBtn').addEventListener('click', printMonthBlock);
+
+// ---------- COMPARTIR POR WHATSAPP ----------
+const waOverlay = document.getElementById('waOverlay');
+
+function textoDiaWA(data, d){
+  const dateObj = new Date(d.date + 'T00:00:00');
+  let txt = `*${d.dayName.toUpperCase()} ${fmtDate(dateObj)}*\n`;
+  if(d.skip) return txt + '_Sin servicio de mando este día._\n';
+  // Mando abreviado: solo los indicativos (el cargo alarga demasiado el mensaje)
+  const mandos = String(d.mandoLabel).split(' · ').filter(x=>/^CH\d+/.test(x.trim()));
+  txt += `Mando: ${mandos.length ? mandos.join(', ') : d.mandoLabel}\n`;
+  if(data.tiro && data.tiro.length && d.dayName === 'Lunes')
+    txt += `🎯 TIRO: ${data.tiro.map(id=>agentLabel(id)).join(', ')}\n`;
+  if(data.taser && d.dayName === 'Jueves')
+    txt += `⚡ TASER: V154 y V164\n`;
+  (d.assignments||[]).forEach(a=>{
+    if(a.agents.every(ag=>ag==='SIN CUBRIR')) return; // unidades vacías fuera
+    txt += `• ${a.unit}: ${a.agents.map(ag=>ag==='SIN CUBRIR' ? '—' : agentLabel(ag)).join(', ')}\n`;
+  });
+  if(d.pico && d.pico.length) txt += `• PICO: ${d.pico.map(id=>agentLabel(id)).join(', ')}\n`;
+  return txt;
+}
+function textoCuadranteWA(scope){
+  const data = currentData;
+  if(!data) return '';
+  const mondayObj = new Date(data.monday + 'T00:00:00');
+  const sundayObj = new Date(mondayObj); sundayObj.setDate(sundayObj.getDate() + 6);
+  let txt = `*CUADRANTE · Semana ${data.weekNum} (Fase ${data.weekType})*\n${fmtDate(mondayObj)} — ${fmtDate(sundayObj)}\n\n`;
+  const dias = scope === 'semana' ? data.days.filter(d=>!d.skip) : [data.days[parseInt(scope, 10)]];
+  txt += dias.map(d=>textoDiaWA(data, d)).join('\n');
+  return txt.trim();
+}
+function refrescarTextoWA(){
+  document.getElementById('waTexto').value = textoCuadranteWA(document.getElementById('waScope').value);
+}
+document.getElementById('waBtn').addEventListener('click', ()=>{
+  if(!currentData) return;
+  const sel = document.getElementById('waScope');
+  sel.innerHTML = '<option value="semana">Toda la semana</option>';
+  currentData.days.forEach((d, i)=>{
+    if(d.skip) return;
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = d.dayName + ' ' + fmtDate(new Date(d.date + 'T00:00:00'));
+    sel.appendChild(opt);
+  });
+  refrescarTextoWA();
+  waOverlay.style.display = 'flex';
+});
+document.getElementById('waScope').addEventListener('change', refrescarTextoWA);
+document.getElementById('waSendBtn').addEventListener('click', ()=>{
+  const texto = document.getElementById('waTexto').value;
+  window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+});
+document.getElementById('waCopyBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('waCopyBtn');
+  const ta = document.getElementById('waTexto');
+  try{
+    await navigator.clipboard.writeText(ta.value);
+  }catch(e){
+    ta.select(); // respaldo para navegadores sin permiso de portapapeles
+    document.execCommand('copy');
+  }
+  const original = btn.textContent;
+  btn.textContent = 'Copiado ✓';
+  setTimeout(()=>{ btn.textContent = original; }, 1500);
+});
+document.getElementById('waCloseBtn').addEventListener('click', ()=>{ waOverlay.style.display = 'none'; });
+waOverlay.addEventListener('click', e=>{ if(e.target === waOverlay) waOverlay.style.display = 'none'; });
 document.getElementById('pdfBtn').addEventListener('click', ()=>{
   window.print();
 });
@@ -2871,8 +2957,11 @@ async function checkAuthAndStart(){
 async function startApp(){
   await loadConfig();
   loadAbsences();
+  // Arranca siempre en la semana en curso y muestra su cuadrante si ya está guardado
+  document.getElementById('datePicker').value = isoDate(new Date());
   updateWeekTag();
   loadHistory();
+  await goToWeek(getMonday(new Date()), false);
   loadAllWeeks(); // en segundo plano: alimenta la equidad entre semanas y el aviso de ausencias largas
 }
 
