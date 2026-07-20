@@ -163,6 +163,17 @@ button.secondary{
   border:1px solid var(--cyan);
 }
 button:disabled{opacity:.4;cursor:not-allowed;}
+/* Panel de ajustes agrupado por función */
+.settings-group{margin-bottom:12px;}
+.settings-group:last-child{margin-bottom:0;}
+.settings-label{
+  font-size:10.5px;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  color:var(--muted);
+  margin-bottom:6px;
+}
+.settings-buttons{display:flex;gap:8px;flex-wrap:wrap;}
 .day-card{
   background:var(--panel);
   border:1px solid var(--line);
@@ -178,10 +189,27 @@ button:disabled{opacity:.4;cursor:not-allowed;}
 }
 .day-head .d{font-family:var(--font-display);font-weight:700;font-size:15px;}
 .day-head .sys{font-size:11.5px;color:var(--muted);}
+/* Día en curso */
+.day-card.today-card{border-color:var(--amber);}
+.day-card.today-card .day-head{background:rgba(242,169,59,.1);}
+.today-badge{
+  font-family:var(--font-display);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.6px;
+  background:var(--amber);
+  color:#1a1305;
+  border-radius:4px;
+  padding:2px 6px;
+  margin-left:8px;
+  vertical-align:middle;
+}
 table{width:100%;border-collapse:collapse;font-size:13.5px;}
 td,th{padding:8px 18px;text-align:left;border-bottom:1px solid var(--line);}
 th{color:var(--muted);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;}
 tr:last-child td{border-bottom:none;}
+/* Filas alternas: ayuda a seguir la línea unidad → efectivos */
+tbody tr:nth-child(even):not(.pico-row):not(.row-empty){background:rgba(255,255,255,.022);}
 .unit{font-family:var(--font-display);font-weight:600;color:var(--cyan);}
 .agent{color:var(--text);}
 .empty{color:var(--red);font-style:italic;}
@@ -300,9 +328,8 @@ tr:last-child td{border-bottom:none;}
   .sub{font-size:12px;}
   /* Botoneras a rejilla de 2 columnas y ancho completo: más fáciles de pulsar */
   .row{gap:8px;}
-  #ajustesPanel{display:none;grid-template-columns:1fr 1fr;gap:8px;}
-  #ajustesPanel[style*="flex"]{display:grid !important;}
-  #ajustesPanel button{width:100%;padding:12px 8px;font-size:12px;}
+  .settings-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .settings-buttons button{width:100%;padding:12px 8px;font-size:12px;}
   .panel{padding:14px 12px;margin-bottom:14px;}
   /* Chips con zona táctil más generosa */
   .chip, .hab-chip{padding:9px 12px 9px 8px;font-size:13px;}
@@ -378,6 +405,11 @@ tr:last-child td{border-bottom:none;}
   .footnote{display:none;}
   .skip-note{display:none;}
   .gaps-note{grid-column:1 / -1;background:#fff;border:1px solid #000;border-radius:0;color:#000;padding:3px 9px;margin-bottom:4px;font-size:9px;line-height:1.35;}
+  /* En papel no tiene sentido resaltar "hoy" ni sombrear filas */
+  .today-badge{display:none;}
+  .day-card.today-card{border-color:#888;}
+  .day-card.today-card .day-head{background:#e5e5e5 !important;}
+  tbody tr:nth-child(even):not(.pico-row):not(.row-empty){background:#fff;}
   .extra-note{color:#000 !important;font-size:9px;padding:2px 9px;border-color:#888;font-weight:600;}
   .taser-tag{color:#000;}
   .agent{cursor:default;padding:0;}
@@ -401,24 +433,44 @@ tr:last-child td{border-bottom:none;}
 
   <div class="row" style="margin-bottom:10px;">
     <button class="secondary" id="ajustesBtn" type="button">Ajustes ▾</button>
-    <button class="secondary" id="dbBtn" type="button">Cuadrantes pasados</button>
+    <button class="secondary" id="dbBtn" type="button">🗂️ Cuadrantes pasados</button>
     <span class="sub" id="userBadge" style="display:none;"></span>
     <button class="ghost" id="logoutBtn" type="button" style="display:none;">Cerrar sesión</button>
   </div>
 
-  <div class="row" id="ajustesPanel" style="display:none;margin-bottom:18px;">
-    <button class="secondary" id="unitsBtn" type="button">Unidades y prioridad</button>
-    <button class="secondary" id="lunaBtn" type="button">Habilitados LUNA</button>
-    <button class="secondary" id="salaBtn" type="button">Habilitados SALA</button>
-    <button class="secondary" id="patrimonioBtn" type="button">Fijos Patrimonio</button>
-    <button class="secondary" id="pairsBtn" type="button">Parejas preferentes</button>
-    <button class="secondary" id="incompatBtn" type="button">Parejas incompatibles</button>
-    <button class="secondary" id="limitadosBtn" type="button">Limitados físicos</button>
-    <button class="secondary" id="namesBtn" type="button">Nombres de agentes</button>
-    <button class="secondary" id="histBtn" type="button">Historial agentes</button>
-    <button class="secondary" id="tiroCalBtn" type="button">Calendario tiro y táser</button>
-    <button class="secondary" id="tiroHistBtn" type="button">Historial tiro/táser</button>
-    <button class="secondary" id="calendarBtn" type="button">Calendario ausencias</button>
+  <div id="ajustesPanel" style="display:none;margin-bottom:18px;">
+    <div class="settings-group">
+      <div class="settings-label">Unidades</div>
+      <div class="settings-buttons">
+        <button class="secondary" id="unitsBtn" type="button">🚓 Unidades y prioridad</button>
+        <button class="secondary" id="patrimonioBtn" type="button">🏛️ Fijos Patrimonio</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-label">Reglas de agentes</div>
+      <div class="settings-buttons">
+        <button class="secondary" id="salaBtn" type="button">🖥️ Habilitados SALA</button>
+        <button class="secondary" id="lunaBtn" type="button">🌙 Habilitados LUNA</button>
+        <button class="secondary" id="limitadosBtn" type="button">🩹 Limitados físicos</button>
+        <button class="secondary" id="pairsBtn" type="button">🤝 Parejas preferentes</button>
+        <button class="secondary" id="incompatBtn" type="button">🚫 Parejas incompatibles</button>
+        <button class="secondary" id="namesBtn" type="button">🏷️ Nombres de agentes</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-label">Calendarios</div>
+      <div class="settings-buttons">
+        <button class="secondary" id="tiroCalBtn" type="button">🎯 Calendario tiro y táser</button>
+        <button class="secondary" id="calendarBtn" type="button">📆 Calendario ausencias</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-label">Historiales</div>
+      <div class="settings-buttons">
+        <button class="secondary" id="histBtn" type="button">📊 Historial agentes</button>
+        <button class="secondary" id="tiroHistBtn" type="button">📈 Historial tiro/táser</button>
+      </div>
+    </div>
   </div>
 
   <div id="authOverlay" class="modal-overlay" style="display:none;">
@@ -1403,8 +1455,9 @@ function renderResults(data){
 
   data.days.forEach((d, dayIndex)=>{
     const dateObj = new Date(d.date + 'T00:00:00');
+    const esHoy = d.date === isoDate(new Date());
     const card = document.createElement('div');
-    card.className='day-card' + (d.skip ? ' skip-day' : '');
+    card.className = 'day-card' + (d.skip ? ' skip-day' : '') + (esHoy ? ' today-card' : '');
     if(d.skip){
       card.innerHTML = `
         <div class="day-head">
@@ -1439,7 +1492,7 @@ function renderResults(data){
     }
     card.innerHTML = `
       <div class="day-head">
-        <div class="d">${d.dayName} ${fmtDate(dateObj)}</div>
+        <div class="d">${d.dayName} ${fmtDate(dateObj)}${esHoy ? '<span class="today-badge">HOY</span>' : ''}</div>
         <div class="sys">Mando: ${d.mandoLabel}</div>
       </div>
       ${notas}
@@ -2882,7 +2935,7 @@ document.getElementById('tiroCalBtn').addEventListener('click', renderTiroCalMod
 
 document.getElementById('ajustesBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('ajustesPanel');
-  panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 });
 
 document.getElementById('unitsBtn').addEventListener('click', renderUnitsModal);
