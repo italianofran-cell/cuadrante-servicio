@@ -132,6 +132,11 @@ input[type=date]{
 .cal-day.today{outline:1px solid var(--cyan);outline-offset:-1px;}
 .cal-day.one{background:rgba(232,195,63,.22);color:#f0dfa0;}
 .cal-day.many{background:rgba(226,87,76,.32);color:#f5b3ad;font-weight:700;}
+/* Calendario de prácticas de tiro/táser */
+.cal-day.pick{cursor:pointer;outline:1px dashed var(--line);outline-offset:-1px;}
+.cal-day.pick:hover{outline-color:var(--cyan);}
+.cal-day.tiro{background:rgba(242,169,59,.4);color:#ffd694;font-weight:700;}
+.cal-day.taser{background:rgba(79,159,224,.4);color:#b9d9f5;font-weight:700;}
 button{
   font-family:var(--font-display);
   font-weight:600;
@@ -365,6 +370,13 @@ tr:last-child td{border-bottom:none;}
   .extra-note{color:#000 !important;font-size:9px;padding:2px 9px;border-color:#888;font-weight:600;}
   .taser-tag{color:#000;}
   .agent{cursor:default;padding:0;}
+  /* PDF del mes completo: una página A4 por semana */
+  body.print-block #results{display:none !important;}
+  body.print-block #blockPrint{display:block !important;position:absolute;left:0;top:0;width:100%;}
+  body.print-block #blockPrint, body.print-block #blockPrint *{visibility:visible;}
+  .print-week{display:grid;grid-template-columns:1fr 1fr;gap:3mm;align-items:start;break-after:page;}
+  .print-week .results-header{grid-column:1 / -1;}
+  .print-week:last-child{break-after:auto;}
 }
 </style>
 </head>
@@ -392,6 +404,7 @@ tr:last-child td{border-bottom:none;}
     <button class="secondary" id="limitadosBtn" type="button">Limitados físicos</button>
     <button class="secondary" id="namesBtn" type="button">Nombres de agentes</button>
     <button class="secondary" id="histBtn" type="button">Historial agentes</button>
+    <button class="secondary" id="tiroCalBtn" type="button">Tiro y táser</button>
     <button class="secondary" id="tiroHistBtn" type="button">Historial tiro/táser</button>
     <button class="secondary" id="calendarBtn" type="button">Calendario ausencias</button>
   </div>
@@ -441,22 +454,13 @@ tr:last-child td{border-bottom:none;}
 
   <div id="tiroOverlay" class="modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:560px;">
-      <div class="modal-head"><span>🎯 Tiro y táser</span></div>
+      <div class="modal-head"><span id="tiroTitulo">🎯 Tiro</span></div>
       <div class="modal-body">
-        <div id="tiroQuestion">
-          <p class="sub" style="margin-top:0;">¿Esta semana hay TIRO? (lunes: 4 agentes al tiro · jueves: V154 y V164 al táser)</p>
-          <div class="row">
-            <button id="tiroYesBtn" type="button">SÍ, hay tiro</button>
-            <button class="secondary" id="tiroNoBtn" type="button">NO</button>
-          </div>
-        </div>
-        <div id="tiroSelect" style="display:none;">
-          <p class="sub" style="margin-top:0;">Selecciona los 4 agentes que van al TIRO el lunes. <span id="tiroCount">0/4</span></p>
-          <div class="hab-grid" id="tiroGrid"></div>
-          <div class="row" style="margin-top:16px;">
-            <button id="tiroConfirmBtn" type="button" disabled>Generar con tiro</button>
-            <button class="ghost" id="tiroBackBtn" type="button">Volver</button>
-          </div>
+        <p class="sub" style="margin-top:0;" id="tiroSubtitulo">Selecciona los 4 agentes que van al TIRO. Ordenados por menos prácticas: entre paréntesis, las veces que ha ido cada uno. <span id="tiroCount">0/4</span></p>
+        <div class="hab-grid" id="tiroGrid"></div>
+        <div class="row" style="margin-top:16px;">
+          <button id="tiroConfirmBtn" type="button" disabled>Confirmar tiro</button>
+          <button class="ghost" id="tiroOmitBtn" type="button">Omitir (sin tiro esta semana)</button>
         </div>
       </div>
     </div>
@@ -519,11 +523,13 @@ tr:last-child td{border-bottom:none;}
 
   <div class="results-toolbar" id="resultsToolbar" style="display:none;">
     <button class="secondary" id="pdfBtn" type="button">Generar PDF</button>
+    <button class="secondary" id="pdfMesBtn" type="button">PDF del mes</button>
     <button class="ghost" id="versionsBtn" type="button">Versiones</button>
     <span class="sub" id="saveStatus"></span>
   </div>
 
   <div id="results"></div>
+  <div id="blockPrint" style="display:none;"></div>
 
   <div class="row" id="weekNav" style="display:none;margin-top:10px;">
     <button class="ghost" id="prevWeekBtn" type="button">◀ Semana anterior</button>
@@ -1716,7 +1722,7 @@ async function goToWeek(monday, autoGenerate){
     document.getElementById('saveStatus').textContent = 'Generando...';
     saveCurrentWeek(currentData);
   } else {
-    document.getElementById('results').innerHTML = '<div class="skip-note" style="padding:20px;">No hay cuadrante guardado para esta semana todavía. Pulsa "Generar cuadrante" para crearlo.</div>';
+    document.getElementById('results').innerHTML = '<div class="skip-note" style="padding:20px;">No hay cuadrante guardado para esta semana todavía. Pulsa "Generar semana" para crearlo.</div>';
     document.getElementById('resultsToolbar').style.display = 'none';
     document.getElementById('weekNav').style.display = 'flex';
   }
@@ -1732,52 +1738,64 @@ document.getElementById('nextWeekBtn').addEventListener('click', ()=>{
   goToWeek(base, true);
 });
 
-// ---------- GENERACIÓN CON PREGUNTA DE TIRO / TÁSER ----------
-let pendingGenInfo = null;
+// ---------- PRÁCTICAS DE TIRO Y TÁSER ----------
+// practiceDays: fechas ISO marcadas en Ajustes → "Tiro y táser".
+// Lunes = TIRO (el usuario asigna 4 agentes al generar) · Jueves = TÁSER (V154 y V164 automático).
+let practiceDays = [];
+async function savePracticeDays(){
+  try{ await appStorage.set('practice_days', JSON.stringify(practiceDays), false); }catch(e){ console.error(e); }
+}
+
 let tiroSelection = new Set();
 const tiroOverlay = document.getElementById('tiroOverlay');
+let tiroDialogResolve = null;
 
-function doGenerate(info, tiroAgents){
-  currentData = buildWeekData(info.monday, info.weekType);
-  if(tiroAgents && tiroAgents.length){
-    currentData.tiro = tiroAgents;   // lunes: estos 4 van al tiro
-    currentData.taser = true;        // jueves: V154 y V164 al táser
-  }
-  renderResults(currentData);
-  document.getElementById('saveStatus').textContent = 'Generando...';
-  saveCurrentWeek(currentData);
+function tiroCountsHistoricos(){
+  const c = {};
+  Object.keys(allWeeksCache).forEach(m=>{
+    (allWeeksCache[m].tiro||[]).forEach(id=>{ c[id] = (c[id]||0) + 1; });
+  });
+  return c;
 }
-document.getElementById('genBtn').addEventListener('click', ()=>{
-  const info = updateWeekTag();
-  if(!info) return;
-  pendingGenInfo = info;
-  tiroSelection = new Set();
-  document.getElementById('tiroQuestion').style.display = 'block';
-  document.getElementById('tiroSelect').style.display = 'none';
-  tiroOverlay.style.display = 'flex';
-});
-document.getElementById('tiroNoBtn').addEventListener('click', ()=>{
-  tiroOverlay.style.display = 'none';
-  if(pendingGenInfo) doGenerate(pendingGenInfo, null);
-  pendingGenInfo = null;
-});
-document.getElementById('tiroYesBtn').addEventListener('click', ()=>{
-  document.getElementById('tiroQuestion').style.display = 'none';
-  document.getElementById('tiroSelect').style.display = 'block';
-  drawTiroGrid();
-});
-document.getElementById('tiroBackBtn').addEventListener('click', ()=>{
-  document.getElementById('tiroSelect').style.display = 'none';
-  document.getElementById('tiroQuestion').style.display = 'block';
-});
-function drawTiroGrid(){
+
+// Agentes en servicio un lunes concreto (candidatos al tiro)
+function poolDeLunes(mondayIso){
+  const monday = new Date(mondayIso + 'T00:00:00');
+  const weekNum = getISOWeek(monday);
+  const weekType = ((weekNum - 29) % 2 + 2) % 2 === 0 ? 'A' : 'B';
+  const sets = workingSetsForWeek(weekType);
+  if(!sets.mandodays.includes('Lunes')) return [];
+  const ids = [];
+  if(sets.g43days.includes('Lunes')) ids.push(...G43_RANGO);
+  if(sets.g52days.includes('Lunes')) ids.push(...G52_RANGO);
+  if(sets.g2days.includes('Lunes')) ids.push(...G2);
+  const tempActive = monday < TEMP_RULES_CUTOFF;
+  return ids.filter(id=>!isAbsentOn(id, monday) && (tempActive || id!=='724'));
+}
+
+// Diálogo de asignación de tiro: devuelve los 4 agentes elegidos, o null si se omite
+function pedirAgentesTiro(fechaIso){
+  return new Promise(resolve=>{
+    tiroDialogResolve = resolve;
+    tiroSelection = new Set();
+    document.getElementById('tiroTitulo').textContent = '🎯 Tiro del lunes ' + fmtShort(fechaIso);
+    drawTiroGrid(fechaIso);
+    tiroOverlay.style.display = 'flex';
+  });
+}
+function drawTiroGrid(fechaIso){
   const grid = document.getElementById('tiroGrid');
   grid.innerHTML = '';
-  ALL_RANGO_IDS.forEach(id=>{
+  const counts = tiroCountsHistoricos();
+  let pool = poolDeLunes(fechaIso);
+  if(!pool.length) pool = ALL_RANGO_IDS.slice();
+  // Los que menos prácticas llevan, arriba (a igualdad, por número de agente)
+  pool.sort((a,b)=>((counts[a]||0)-(counts[b]||0)) || String(a).localeCompare(String(b), 'es', {numeric:true}));
+  pool.forEach(id=>{
     const on = tiroSelection.has(id);
     const chip = document.createElement('label');
     chip.className = 'hab-chip' + (on ? ' on' : '');
-    chip.innerHTML = `<input type="checkbox" ${on?'checked':''}> ${labelOf(id)}`;
+    chip.innerHTML = `<input type="checkbox" ${on?'checked':''}> ${labelOf(id)} (${counts[id]||0})`;
     chip.querySelector('input').addEventListener('change', e=>{
       if(e.target.checked){
         if(tiroSelection.size >= 4){ e.target.checked = false; return; }
@@ -1796,8 +1814,40 @@ function drawTiroGrid(){
 }
 document.getElementById('tiroConfirmBtn').addEventListener('click', ()=>{
   tiroOverlay.style.display = 'none';
-  if(pendingGenInfo) doGenerate(pendingGenInfo, [...tiroSelection]);
-  pendingGenInfo = null;
+  if(tiroDialogResolve){ tiroDialogResolve([...tiroSelection]); tiroDialogResolve = null; }
+});
+document.getElementById('tiroOmitBtn').addEventListener('click', ()=>{
+  tiroOverlay.style.display = 'none';
+  if(tiroDialogResolve){ tiroDialogResolve(null); tiroDialogResolve = null; }
+});
+
+// Prácticas que afectan a una semana: lunes de tiro (si hay servicio) y jueves de táser
+function practicasDeSemana(monday, weekType){
+  const sets = workingSetsForWeek(weekType);
+  const lunesIso = isoDate(monday);
+  const jueves = new Date(monday);
+  jueves.setDate(jueves.getDate() + 3);
+  return {
+    tiro: (practiceDays.includes(lunesIso) && sets.mandodays.includes('Lunes')) ? lunesIso : null,
+    taser: practiceDays.includes(isoDate(jueves)) && sets.mandodays.includes('Jueves')
+  };
+}
+
+function doGenerate(info, tiroAgents, taserFlag){
+  currentData = buildWeekData(info.monday, info.weekType);
+  if(tiroAgents && tiroAgents.length) currentData.tiro = tiroAgents; // lunes: estos 4 van al tiro
+  if(taserFlag) currentData.taser = true;                            // jueves: V154 y V164 al táser
+  renderResults(currentData);
+  document.getElementById('saveStatus').textContent = 'Generando...';
+  saveCurrentWeek(currentData);
+}
+document.getElementById('genBtn').addEventListener('click', async ()=>{
+  const info = updateWeekTag();
+  if(!info) return;
+  const pract = practicasDeSemana(info.monday, info.weekType);
+  let tiroAgents = null;
+  if(pract.tiro) tiroAgents = await pedirAgentesTiro(pract.tiro);
+  doGenerate(info, tiroAgents, pract.taser);
 });
 
 // ---------- GENERAR MES (BLOQUE) ----------
@@ -1822,7 +1872,12 @@ async function generarMes(){
   const finBloque = new Date(mondays[mondays.length - 1]);
   finBloque.setDate(finBloque.getDate() + 6);
   const nombreMes = base.toLocaleDateString('es-ES', {month:'long', year:'numeric'});
-  if(!confirm(`¿Generar el mes de ${nombreMes} completo?\n\nSe generarán ${mondays.length} semanas: del ${fmtDate(mondays[0])} al ${fmtDate(finBloque)}.\n\nLas semanas ya guardadas en ese rango se sobrescribirán (sus versiones quedan en el historial de "Versiones").\n\nEl tiro/táser no se pregunta en bloque: si una semana lleva tiro, regenérala después con "Generar semana".`)) return;
+  const tipoDe = m => ((getISOWeek(m) - 29) % 2 + 2) % 2 === 0 ? 'A' : 'B';
+  const lunesConTiro = mondays.filter(m => practicasDeSemana(m, tipoDe(m)).tiro).length;
+  const avisoTiro = lunesConTiro
+    ? `\n\nHay ${lunesConTiro} lunes de TIRO en el bloque (según el calendario de prácticas): se te pedirá asignar los 4 agentes de cada uno.`
+    : '';
+  if(!confirm(`¿Generar el mes de ${nombreMes} completo?\n\nSe generarán ${mondays.length} semanas: del ${fmtDate(mondays[0])} al ${fmtDate(finBloque)}.\n\nLas semanas ya guardadas en ese rango se sobrescribirán (sus versiones quedan en el historial de "Versiones").${avisoTiro}`)) return;
 
   const btn = document.getElementById('genMesBtn');
   btn.disabled = true;
@@ -1830,9 +1885,13 @@ async function generarMes(){
     for(let i = 0; i < mondays.length; i++){
       const monday = mondays[i];
       document.getElementById('saveStatus').textContent = `Generando mes... semana ${i+1} de ${mondays.length}`;
-      const weekNum = getISOWeek(monday);
-      const weekType = ((weekNum - 29) % 2 + 2) % 2 === 0 ? 'A' : 'B';
+      const weekType = tipoDe(monday);
+      const pract = practicasDeSemana(monday, weekType);
+      let tiroAgents = null;
+      if(pract.tiro) tiroAgents = await pedirAgentesTiro(pract.tiro);
       currentData = buildWeekData(monday, weekType);
+      if(tiroAgents && tiroAgents.length) currentData.tiro = tiroAgents;
+      if(pract.taser) currentData.taser = true;
       renderResults(currentData);
       await saveCurrentWeek(currentData);
     }
@@ -1845,6 +1904,71 @@ async function generarMes(){
   }
 }
 document.getElementById('genMesBtn').addEventListener('click', generarMes);
+
+// ---------- PDF DEL MES (BLOQUE COMPLETO) ----------
+function buildPrintWeekHTML(data){
+  const mondayObj = new Date(data.monday + 'T00:00:00');
+  const sundayObj = new Date(mondayObj);
+  sundayObj.setDate(sundayObj.getDate() + 6);
+  let html = `<div class="print-week">
+    <div class="results-header">
+      <div class="week-num">Semana ${data.weekNum} · Fase ${data.weekType}</div>
+      <div class="range">${fmtDate(mondayObj)} — ${fmtDate(sundayObj)}</div>
+    </div>`;
+  data.days.forEach(d=>{
+    if(d.skip) return;
+    const dateObj = new Date(d.date + 'T00:00:00');
+    let rows = '';
+    (d.assignments||[]).forEach(a=>{
+      const names = a.agents.map(ag=>{
+        if(ag==='SIN CUBRIR') return '<span class="empty">SIN CUBRIR</span>';
+        return `<span class="agent">${agentLabel(ag)}</span>`;
+      }).join(', ');
+      const taserTag = (data.taser && d.dayName==='Jueves' && (a.unit==='V154' || a.unit==='V164')) ? '<span class="taser-tag">⚡TASER</span>' : '';
+      const allEmpty = a.agents.every(ag=>ag==='SIN CUBRIR');
+      rows += `<tr${allEmpty?' class="row-empty"':''}><td class="unit">${a.unit}${taserTag}</td><td>${names}</td></tr>`;
+    });
+    if(d.pico && d.pico.length){
+      rows += `<tr class="pico-row"><td class="unit">PICO</td><td>${d.pico.map(id=>agentLabel(id)).join(', ')}</td></tr>`;
+    }
+    let notas = '';
+    if(data.tiro && data.tiro.length && d.dayName==='Lunes') notas += `<div class="extra-note">🎯 TIRO: ${data.tiro.map(id=>agentLabel(id)).join(', ')}</div>`;
+    if(data.taser && d.dayName==='Jueves') notas += `<div class="extra-note" style="color:#4f9fe0;">⚡ TASER: V154 y V164</div>`;
+    html += `<div class="day-card">
+      <div class="day-head">
+        <div class="d">${d.dayName} ${fmtDate(dateObj)}</div>
+        <div class="sys">Mando: ${d.mandoLabel}</div>
+      </div>
+      ${notas}
+      <table>
+        <thead><tr><th>Unidad</th><th>Efectivo(s)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+async function printMonthBlock(){
+  const val = document.getElementById('datePicker').value;
+  if(!val) return;
+  const base = new Date(val + 'T00:00:00');
+  const mondays = mondaysOfMonth(base);
+  await loadAllWeeks();
+  const weeks = mondays.map(m=>allWeeksCache[isoDate(m)]).filter(Boolean);
+  const nombreMes = base.toLocaleDateString('es-ES', {month:'long', year:'numeric'});
+  if(!weeks.length){
+    alert('No hay ninguna semana guardada del mes de ' + nombreMes + '. Usa "Generar mes (bloque)" primero.');
+    return;
+  }
+  if(weeks.length < mondays.length && !confirm(`Solo hay ${weeks.length} de ${mondays.length} semanas guardadas para ${nombreMes}. ¿Imprimir las que hay?`)) return;
+  const cont = document.getElementById('blockPrint');
+  cont.innerHTML = weeks.map(buildPrintWeekHTML).join('');
+  document.body.classList.add('print-block');
+  window.print();
+}
+document.getElementById('pdfMesBtn').addEventListener('click', printMonthBlock);
 document.getElementById('pdfBtn').addEventListener('click', ()=>{
   window.print();
 });
@@ -1854,6 +1978,8 @@ document.getElementById('modalPdfBtn').addEventListener('click', ()=>{
 });
 window.addEventListener('afterprint', ()=>{
   document.body.classList.remove('print-modal');
+  document.body.classList.remove('print-block');
+  document.getElementById('blockPrint').innerHTML = '';
 });
 
 // ---------- CONFIGURACION: prioridad de unidades y habilitados (persistentes) ----------
@@ -1896,6 +2022,10 @@ async function loadConfig(){
   try{
     const res = await appStorage.get('agent_names', false);
     if(res && res.value) agentNames = JSON.parse(res.value);
+  }catch(e){}
+  try{
+    const res = await appStorage.get('practice_days', false);
+    if(res && res.value) practiceDays = JSON.parse(res.value);
   }catch(e){}
 }
 async function saveUnitPriority(){
@@ -2540,6 +2670,74 @@ function drawCalendarModal(){
   document.getElementById('calNextYear').addEventListener('click', ()=>{ calYear++; drawCalendarModal(); });
 }
 
+// ---------- MODAL: CALENDARIO DE PRÁCTICAS DE TIRO Y TÁSER ----------
+let practCalYear = new Date().getFullYear();
+let modalPractDraft = null;
+
+function renderTiroCalModal(){
+  modalMode = 'tirocal';
+  modalPractDraft = new Set(practiceDays);
+  document.getElementById('modalTitle').textContent = 'Tiro y táser · calendario de prácticas';
+  document.getElementById('modalHint').textContent = 'Pulsa un LUNES para marcar TIRO (ámbar) o un JUEVES para TÁSER (azul); vuelve a pulsar para quitarlo. Pulsa "Guardar cambios" al terminar.';
+  modalOverlay.querySelector('.modal-box').classList.add('wide');
+  modalOverlay.style.display = 'flex';
+  drawTiroCalModal();
+}
+function drawTiroCalModal(){
+  let html = `<div class="row" style="margin-bottom:14px;align-items:center;">
+    <button class="ghost" id="practPrevYear" type="button">◀</button>
+    <span class="week-tag" style="min-width:70px;text-align:center;">${practCalYear}</span>
+    <button class="ghost" id="practNextYear" type="button">▶</button>
+  </div>`;
+  html += '<div class="cal-grid">';
+  for(let m=0; m<12; m++){
+    html += `<div class="cal-month"><div class="cal-month-name">${MONTH_NAMES[m]}</div><div class="cal-dow">`;
+    ['L','M','X','J','V','S','D'].forEach(d=>{ html += `<span>${d}</span>`; });
+    html += '</div><div class="cal-days">';
+    const first = new Date(practCalYear, m, 1);
+    const leading = (first.getDay() + 6) % 7;
+    for(let i=0;i<leading;i++) html += '<span class="cal-day empty"></span>';
+    const dim = new Date(practCalYear, m+1, 0).getDate();
+    for(let day=1; day<=dim; day++){
+      const dateObj = new Date(practCalYear, m, day);
+      const iso = isoDate(dateObj);
+      const dow = dateObj.getDay(); // 1 = lunes (tiro), 4 = jueves (táser)
+      let cls = 'cal-day';
+      let attr = '';
+      if(dow === 1 || dow === 4){
+        cls += ' pick';
+        attr = ` data-iso="${iso}"`;
+        if(modalPractDraft.has(iso)) cls += (dow === 1 ? ' tiro' : ' taser');
+      }
+      html += `<span class="${cls}"${attr}>${day}</span>`;
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
+  const marcados = [...modalPractDraft].sort();
+  if(marcados.length){
+    html += '<div style="margin-top:18px;"><div class="group-title">Prácticas registradas (' + marcados.length + ')</div>';
+    marcados.forEach(iso=>{
+      const dow = new Date(iso + 'T00:00:00').getDay();
+      html += `<div class="unit-row"><span>${dow===1 ? '🎯 TIRO' : '⚡ TÁSER'} <span class="sub">· ${dow===1 ? 'lunes' : 'jueves'} ${fmtShort(iso)}</span></span></div>`;
+    });
+    html += '</div>';
+  } else {
+    html += '<p class="sub" style="margin-top:14px;">No hay prácticas marcadas todavía.</p>';
+  }
+  modalBody.innerHTML = html;
+  document.getElementById('practPrevYear').addEventListener('click', ()=>{ practCalYear--; drawTiroCalModal(); });
+  document.getElementById('practNextYear').addEventListener('click', ()=>{ practCalYear++; drawTiroCalModal(); });
+  modalBody.querySelectorAll('.cal-day.pick').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const iso = el.dataset.iso;
+      if(modalPractDraft.has(iso)) modalPractDraft.delete(iso); else modalPractDraft.add(iso);
+      drawTiroCalModal();
+    });
+  });
+}
+document.getElementById('tiroCalBtn').addEventListener('click', renderTiroCalModal);
+
 document.getElementById('ajustesBtn').addEventListener('click', ()=>{
   const panel = document.getElementById('ajustesPanel');
   panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
@@ -2592,6 +2790,9 @@ document.getElementById('modalSave').addEventListener('click', async ()=>{
     await saveAgentNames();
     renderGroups();
     if(currentData) renderResults(currentData);
+  } else if(modalMode === 'tirocal'){
+    practiceDays = [...modalPractDraft].sort();
+    await savePracticeDays();
   }
   closeModal();
 });
