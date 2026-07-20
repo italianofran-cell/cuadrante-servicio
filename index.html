@@ -282,6 +282,16 @@ tr:last-child td{border-bottom:none;}
   color:var(--amber);
 }
 .results-header .range{color:var(--muted);font-size:13px;margin-top:2px;}
+.gaps-note{
+  background:rgba(226,87,76,.12);
+  border:1px solid var(--red);
+  border-radius:8px;
+  padding:10px 16px;
+  margin-bottom:16px;
+  font-size:12.5px;
+  color:#f5b3ad;
+  line-height:1.6;
+}
 /* ---------- MÓVIL ---------- */
 @media (max-width:640px){
   body{padding:14px 10px 40px;}
@@ -367,6 +377,7 @@ tr:last-child td{border-bottom:none;}
   .pico-row .unit{color:#000;}
   .footnote{display:none;}
   .skip-note{display:none;}
+  .gaps-note{grid-column:1 / -1;background:#fff;border:1px solid #000;border-radius:0;color:#000;padding:3px 9px;margin-bottom:4px;font-size:9px;line-height:1.35;}
   .extra-note{color:#000 !important;font-size:9px;padding:2px 9px;border-color:#888;font-weight:600;}
   .taser-tag{color:#000;}
   .agent{cursor:default;padding:0;}
@@ -376,6 +387,7 @@ tr:last-child td{border-bottom:none;}
   body.print-block #blockPrint, body.print-block #blockPrint *{visibility:visible;}
   .print-week{display:grid;grid-template-columns:1fr 1fr;gap:3mm;align-items:start;break-after:page;}
   .print-week .results-header{grid-column:1 / -1;}
+  .print-week .gaps-note{grid-column:1 / -1;}
   .print-week:last-child{break-after:auto;}
 }
 </style>
@@ -1340,6 +1352,22 @@ function buildWeekData(monday, weekType){
   return {monday: isoDate(monday), weekNum, weekType, generatedAt: new Date().toISOString(), absent: absentTodayIds(), days};
 }
 
+// Puestos sin cubrir de una semana: total y una línea por día ("Jueves — LUNA (2), V30")
+function huecosDeSemana(data){
+  const lineas = [];
+  let total = 0;
+  (data.days||[]).forEach(d=>{
+    if(d.skip) return;
+    const delDia = [];
+    (d.assignments||[]).forEach(a=>{
+      const n = a.agents.filter(ag=>ag==='SIN CUBRIR').length;
+      if(n){ delDia.push(a.unit + (n > 1 ? ' (' + n + ')' : '')); total += n; }
+    });
+    if(delDia.length) lineas.push(d.dayName + ' — ' + delDia.join(', '));
+  });
+  return {total, lineas};
+}
+
 function agentLabel(id){
   if(id==='SIN CUBRIR') return null;
   const num = AGENTS[id] ? AGENTS[id].label.split(' · ')[0] : id;
@@ -1360,6 +1388,17 @@ function renderResults(data){
     <div class="range noprint" style="margin-top:6px;">Si algún NO OPERATIVO cambia a media semana, ajusta su casilla arriba y usa "Regenerar desde aquí" en el día correspondiente: los días anteriores no se tocan.</div>
   `;
   container.appendChild(header);
+
+  // Resumen de puestos sin cubrir de toda la semana (en el PDF las unidades vacías se ocultan,
+  // así que esta nota es la única constancia de los huecos)
+  const g = huecosDeSemana(data);
+  if(g.total){
+    const aviso = document.createElement('div');
+    aviso.className = 'gaps-note';
+    aviso.innerHTML = `<b>⚠️ ${g.total} puesto${g.total>1?'s':''} sin cubrir</b><br>${g.lineas.join('<br>')}`;
+    container.appendChild(aviso);
+  }
+
   document.getElementById('weekNav').style.display = 'flex';
 
   data.days.forEach((d, dayIndex)=>{
@@ -1938,6 +1977,10 @@ function buildPrintWeekHTML(data){
       <div class="week-num">Semana ${data.weekNum} · Fase ${data.weekType}</div>
       <div class="range">${fmtDate(mondayObj)} — ${fmtDate(sundayObj)}</div>
     </div>`;
+  const g = huecosDeSemana(data);
+  if(g.total){
+    html += `<div class="gaps-note"><b>⚠️ ${g.total} puesto${g.total>1?'s':''} sin cubrir</b><br>${g.lineas.join('<br>')}</div>`;
+  }
   data.days.forEach(d=>{
     if(d.skip) return;
     const dateObj = new Date(d.date + 'T00:00:00');
@@ -2022,6 +2065,10 @@ function textoCuadranteWA(scope){
   let txt = `*CUADRANTE · Semana ${data.weekNum} (Fase ${data.weekType})*\n${fmtDate(mondayObj)} — ${fmtDate(sundayObj)}\n\n`;
   const dias = scope === 'semana' ? data.days.filter(d=>!d.skip) : [data.days[parseInt(scope, 10)]];
   txt += dias.map(d=>textoDiaWA(data, d)).join('\n');
+  if(scope === 'semana'){
+    const g = huecosDeSemana(data);
+    if(g.total) txt += `\n⚠️ *${g.total} puesto${g.total>1?'s':''} sin cubrir*\n${g.lineas.join('\n')}\n`;
+  }
   return txt.trim();
 }
 function refrescarTextoWA(){
