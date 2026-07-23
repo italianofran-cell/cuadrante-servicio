@@ -683,9 +683,10 @@ function labelOf(id){
 // Reglas temporales vigentes hasta el 01/09/2026:
 // - SALA 2 solo existe como tal Viernes y Sábado; el resto de días ese puesto se llama V CH (mismos habilitados que SALA 2)
 // - PUERTA solo la cubren los habilitados de SALA
-// - El agente 724 SOLO puede hacer ALMUDI (si ALMUDI está cubierto, queda en PICO)
-// - El agente 724 deja de existir a partir de esta fecha (ya no entra en el reparto)
 const TEMP_RULES_CUTOFF = new Date(2026,8,1);
+// La agente 724 desaparece del sistema el 31/07/2026: ese día ya no entra en el reparto.
+// Mientras esté activa, SOLO puede hacer ALMUDI (y el puesto es suyo por delante del titular).
+const CUTOFF_724 = new Date(2026,6,31);
 
 // Limitados físicos: solo pueden hacer Patrimonio (AYUNTAMIENTO/ALMUDI/PUERTA) o SALA si están habilitados en sala.
 let limitadosFisicos = [];
@@ -1077,7 +1078,8 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
 
   // Ausencias día a día: si el agente tiene fecha de incorporación anterior o igual a este día, ya cuenta como operativo
   let pool = poolIds.filter(id=>!isAbsentOn(id, dateObj));
-  if(!tempActive) pool = pool.filter(id=>id!=='724'); // el 724 deja de existir a partir del 01/09/2026
+  const activa724 = dateObj ? (dateObj < CUTOFF_724) : false;
+  if(!activa724) pool = pool.filter(id=>id!=='724'); // la 724 desaparece del sistema el 31/07/2026
   const mandoPresentes = mandoToday.filter(id=>!isAbsentOn(id, dateObj));
 
   // Foto del doneMap ANTES de asignar hoy: sirve para detectar repeticiones de unidad
@@ -1089,7 +1091,7 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
   function canDo(id, unitName){
     // Día de tiro: quien va al tiro no puede quedarse en AYUNTAMIENTO ni ALMUDI
     if(tiroSet && tiroSet.has(id) && (unitName==='AYUNTAMIENTO' || unitName==='ALMUDI')) return false;
-    if(tempActive && id==='724' && unitName!=='ALMUDI' && !(tiroSet && tiroSet.has(id))) return false; // 724 solo ALMUDI hasta 01/09 (salvo día de tiro)
+    if(activa724 && id==='724' && unitName!=='ALMUDI' && !(tiroSet && tiroSet.has(id))) return false; // la 724 solo ALMUDI mientras esté activa (salvo día de tiro)
     // Limitados físicos: solo Patrimonio o SALA (para SALA además deben estar en los habilitados,
     // cosa que ya garantizan las listas de candidatos de SALA 1 / SALA 2).
     if(limitadosFisicos.includes(id) && !UNIDADES_LIMITADOS.includes(unitName)) return false;
@@ -1226,9 +1228,9 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
           ag = chooseFair(applyReserve(cand, unitIdx), 'AYUNTAMIENTO', 'AYUNTAMIENTO', agents);
         }
       } else if(u.special==='almudi'){
-        // Hasta el 01/09/2026: si el 724 trabaja ese día, ALMUDI es suyo (por delante del titular),
+        // Hasta el 31/07/2026: si la 724 trabaja ese día, ALMUDI es suyo (por delante del titular),
         // salvo que ese día tenga tiro: entonces hará PUERTA y su puesto se cubre por las reglas
-        if(tempActive && pool.includes('724') && !(tiroSet && tiroSet.has('724'))){ ag = commit('724','ALMUDI'); fijo = true; }
+        if(activa724 && pool.includes('724') && !(tiroSet && tiroSet.has('724'))){ ag = commit('724','ALMUDI'); fijo = true; }
         else if(fijoDisponible(fijosPatrimonio.almudiTitular,'ALMUDI')){ ag = commit(fijosPatrimonio.almudiTitular,'ALMUDI'); fijo = true; }
         else if(fijoDisponible(fijosPatrimonio.almudiBackup,'ALMUDI')){ ag = commit(fijosPatrimonio.almudiBackup,'ALMUDI'); fijo = true; }
         else {
@@ -1238,10 +1240,10 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
         }
       } else if(u.special==='puerta'){
         // Titular de Patrimonio con tiro hoy: va obligatoriamente a la PUERTA.
-        // Cuenta el titular del ALMUDI también mientras el 724 ocupe el puesto (hasta 01/09):
+        // Cuenta el titular del ALMUDI también mientras la 724 ocupe el puesto (hasta 31/07):
         // si es limitado a Patrimonio, la PUERTA es su único destino posible el día de tiro.
         const candidatosTitular = [fijosPatrimonio.ayuntamientoTitular, fijosPatrimonio.almudiTitular];
-        if(tempActive) candidatosTitular.push('724');
+        if(activa724) candidatosTitular.push('724');
         const desplazado = tiroSet
           ? candidatosTitular.find(id=>id && id!=='ANY' && tiroSet.has(id) && pool.includes(id))
           : null;
@@ -1562,7 +1564,6 @@ function swapWarnings(r){
   const warns = [];
   const unitOrig = normalizeUnitName(a.unit);
   const dayName = day.dayName;
-  const tempActive = new Date(day.date + 'T00:00:00') < TEMP_RULES_CUTOFF;
 
   a.agents.forEach((p, i)=>{
     if(i === r.slot || p === 'SIN CUBRIR') return;
@@ -1570,8 +1571,10 @@ function swapWarnings(r){
   });
   if(limitadosFisicos.includes(ag) && !UNIDADES_LIMITADOS.includes(unitOrig))
     warns.push(agentLabel(ag) + ' es LIMITADO FÍSICO y no debería hacer ' + a.unit);
-  if(tempActive && ag === '724' && unitOrig !== 'ALMUDI')
-    warns.push('El 724 solo debería hacer ALMUDI hasta el 01/09/2026');
+  if(new Date(day.date + 'T00:00:00') < CUTOFF_724 && ag === '724' && unitOrig !== 'ALMUDI')
+    warns.push('La 724 solo debería hacer ALMUDI mientras esté activa (hasta el 31/07/2026)');
+  if(new Date(day.date + 'T00:00:00') >= CUTOFF_724 && ag === '724')
+    warns.push('La 724 ya no está en el sistema desde el 31/07/2026');
   const nombre = (agentNames[ag]||'').trim().toLowerCase().split(/\s+/)[0];
   if((nombre === 'victoria' || nombre === 'virginia') && (unitOrig === 'AYUNTAMIENTO' || unitOrig === 'ALMUDI' || unitOrig === 'PUERTA'))
     warns.push(agentLabel(ag) + ' no debería ir a Patrimonio (' + a.unit + ')');
@@ -1904,8 +1907,7 @@ function poolDeLunes(mondayIso){
   if(sets.g43days.includes('Lunes')) ids.push(...G43_RANGO);
   if(sets.g52days.includes('Lunes')) ids.push(...G52_RANGO);
   if(sets.g2days.includes('Lunes')) ids.push(...G2);
-  const tempActive = monday < TEMP_RULES_CUTOFF;
-  return ids.filter(id=>!isAbsentOn(id, monday) && (tempActive || id!=='724'));
+  return ids.filter(id=>!isAbsentOn(id, monday) && (monday < CUTOFF_724 || id!=='724'));
 }
 
 // Diálogo de asignación de tiro: devuelve los 4 agentes elegidos, o null si se omite
@@ -1922,10 +1924,10 @@ function pedirAgentesTiro(fechaIso){
 // Si uno de ellos va al tiro, ese día hará PUERTA; como PUERTA solo tiene una plaza,
 // no pueden ir los dos al tiro el mismo día.
 function ocupantesPatrimonio(fechaIso){
-  const tempActive = new Date(fechaIso + 'T00:00:00') < TEMP_RULES_CUTOFF;
   const pool = poolDeLunes(fechaIso);
   const occ = new Set();
-  [fijosPatrimonio.ayuntamientoTitular, fijosPatrimonio.almudiTitular, tempActive ? '724' : null]
+  [fijosPatrimonio.ayuntamientoTitular, fijosPatrimonio.almudiTitular,
+   new Date(fechaIso + 'T00:00:00') < CUTOFF_724 ? '724' : null]
     .forEach(id=>{ if(id && id!=='ANY' && pool.includes(id)) occ.add(id); });
   return occ;
 }

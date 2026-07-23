@@ -97,22 +97,32 @@ for (const monday of [SEMANA_B, SEMANA_A]) for (let i = 0; i < REPS; i++){
 }
 
 // ---------- 2. Regla del 724: siempre ALMUDI hasta el corte, desaparece después ----------
-console.log('2. Regla del 724 (solo ALMUDI hasta 01/09, luego desaparece)');
+console.log('2. Regla de la 724 (solo ALMUDI mientras esté activa; desaparece el 31/07/2026)');
 resetConfig();
+const CUTOFF_724_ISO = '2026-07-31';
 for (let i = 0; i < REPS; i++){
+  // La semana del 27/07 cruza la frontera: trabaja el martes 28, ya no está viernes 31 ni sábado 01/08
   for (const monday of [SEMANA_B, SEMANA_A]){
     const wk = mkWeek(monday);
     for (const d of serviceDays(wk)){
+      const activa = d.date < CUTOFF_724_ISO;
       const almudi = unitsOf(d).find(a => a.unit === 'ALMUDI');
-      ok(almudi && almudi.agents[0] === '724', `${monday} ${d.dayName}: ALMUDI debería ser del 724, es ${almudi && almudi.agents[0]}`);
-      for (const a of unitsOf(d)) if (a.unit !== 'ALMUDI')
-        ok(!a.agents.includes('724'), `${monday} ${d.dayName}: 724 en ${a.unit}`);
+      if (activa){
+        ok(almudi && almudi.agents[0] === '724', `${monday} ${d.dayName} (${d.date}): ALMUDI debería ser de la 724, es ${almudi && almudi.agents[0]}`);
+        for (const a of unitsOf(d)) if (a.unit !== 'ALMUDI')
+          ok(!a.agents.includes('724'), `${monday} ${d.dayName}: 724 en ${a.unit}`);
+      } else {
+        ok(almudi && !almudi.agents.includes('724') && !almudi.agents.includes('SIN CUBRIR'),
+           `${monday} ${d.dayName} (${d.date}): la 724 ya no está y ALMUDI debe quedar cubierto (${almudi && almudi.agents.join(',')})`);
+        for (const a of unitsOf(d)) ok(!a.agents.includes('724'), `${monday} ${d.dayName} (${d.date}): 724 asignada tras su marcha (${a.unit})`);
+        ok(!(d.pico || []).includes('724'), `${monday} ${d.dayName} (${d.date}): 724 en PICO tras su marcha`);
+      }
     }
   }
   const post = mkWeek(SEMANA_POST);
   for (const d of serviceDays(post)){
-    for (const a of unitsOf(d)) ok(!a.agents.includes('724'), `post-corte: 724 en ${a.unit}`);
-    ok(!(d.pico || []).includes('724'), 'post-corte: 724 en PICO');
+    for (const a of unitsOf(d)) ok(!a.agents.includes('724'), `post-marcha: 724 en ${a.unit}`);
+    ok(!(d.pico || []).includes('724'), 'post-marcha: 724 en PICO');
   }
 }
 
