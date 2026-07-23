@@ -520,7 +520,7 @@ tbody tr:nth-child(even):not(.pico-row):not(.row-empty){background:rgba(255,255,
     <div class="modal-box" style="max-width:560px;">
       <div class="modal-head"><span id="tiroTitulo">🎯 Tiro</span></div>
       <div class="modal-body">
-        <p class="sub" style="margin-top:0;" id="tiroSubtitulo">Selecciona los 4 agentes que van al TIRO. Ordenados por menos prácticas: entre paréntesis, las veces que ha ido cada uno. <span id="tiroCount">0/4</span></p>
+        <p class="sub" style="margin-top:0;" id="tiroSubtitulo">Selecciona los 4 agentes que van al TIRO. Ordenados por menos prácticas: entre paréntesis, las veces que ha ido cada uno. Los marcados con 🏛️ son titulares de Patrimonio: si van al tiro, ese día harán PUERTA y su puesto se cubre por las reglas. <span id="tiroCount">0/4</span></p>
         <div class="hab-grid" id="tiroGrid"></div>
         <div class="row" style="margin-top:16px;">
           <button id="tiroConfirmBtn" type="button" disabled>Confirmar tiro</button>
@@ -604,6 +604,7 @@ tbody tr:nth-child(even):not(.pico-row):not(.row-empty){background:rgba(255,255,
   <div class="results-toolbar" id="resultsToolbar" style="display:none;">
     <button class="secondary" id="pdfBtn" type="button">Generar PDF</button>
     <button class="secondary" id="pdfMesBtn" type="button">PDF del mes</button>
+    <button class="secondary" id="excelBtn" type="button">Generar Excel</button>
     <button class="secondary" id="waBtn" type="button">Compartir 💬</button>
     <button class="ghost" id="versionsBtn" type="button">Versiones</button>
     <span class="sub" id="saveStatus"></span>
@@ -1065,7 +1066,7 @@ function shuffle(arr){
   return arr;
 }
 
-function buildDay(dayName, sets, counts, doneMap, dateObj){
+function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
   const tempActive = dateObj ? (dateObj < TEMP_RULES_CUTOFF) : false;
   const isFriSat = (dayName === 'Viernes' || dayName === 'Sábado');
   const poolIds = [];
@@ -1086,7 +1087,9 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
 
   // Restricciones duras por agente y unidad (unitName = clave original de la unidad).
   function canDo(id, unitName){
-    if(tempActive && id==='724' && unitName!=='ALMUDI') return false; // 724 solo ALMUDI hasta 01/09
+    // Día de tiro: quien va al tiro no puede quedarse en AYUNTAMIENTO ni ALMUDI
+    if(tiroSet && tiroSet.has(id) && (unitName==='AYUNTAMIENTO' || unitName==='ALMUDI')) return false;
+    if(tempActive && id==='724' && unitName!=='ALMUDI' && !(tiroSet && tiroSet.has(id))) return false; // 724 solo ALMUDI hasta 01/09 (salvo día de tiro)
     // Limitados físicos: solo Patrimonio o SALA (para SALA además deben estar en los habilitados,
     // cosa que ya garantizan las listas de candidatos de SALA 1 / SALA 2).
     if(limitadosFisicos.includes(id) && !UNIDADES_LIMITADOS.includes(unitName)) return false;
@@ -1223,8 +1226,9 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
           ag = chooseFair(applyReserve(cand, unitIdx), 'AYUNTAMIENTO', 'AYUNTAMIENTO', agents);
         }
       } else if(u.special==='almudi'){
-        // Hasta el 01/09/2026: si el 724 trabaja ese día, ALMUDI es suyo (por delante del titular)
-        if(tempActive && pool.includes('724')){ ag = commit('724','ALMUDI'); fijo = true; }
+        // Hasta el 01/09/2026: si el 724 trabaja ese día, ALMUDI es suyo (por delante del titular),
+        // salvo que ese día tenga tiro: entonces hará PUERTA y su puesto se cubre por las reglas
+        if(tempActive && pool.includes('724') && !(tiroSet && tiroSet.has('724'))){ ag = commit('724','ALMUDI'); fijo = true; }
         else if(fijoDisponible(fijosPatrimonio.almudiTitular,'ALMUDI')){ ag = commit(fijosPatrimonio.almudiTitular,'ALMUDI'); fijo = true; }
         else if(fijoDisponible(fijosPatrimonio.almudiBackup,'ALMUDI')){ ag = commit(fijosPatrimonio.almudiBackup,'ALMUDI'); fijo = true; }
         else {
@@ -1233,15 +1237,26 @@ function buildDay(dayName, sets, counts, doneMap, dateObj){
           ag = chooseFair(applyReserve(cand, unitIdx), 'ALMUDI', 'ALMUDI', agents);
         }
       } else if(u.special==='puerta'){
-        let cand;
-        if(tempActive){
-          cand = pool.filter(id=>salaHab().includes(id));
-          if(!cand.length) cand = [...pool];
+        // Titular de Patrimonio con tiro hoy: va obligatoriamente a la PUERTA
+        const ocupanteAlmudi = tempActive ? '724' : fijosPatrimonio.almudiTitular;
+        const desplazado = tiroSet
+          ? [fijosPatrimonio.ayuntamientoTitular, ocupanteAlmudi]
+              .find(id=>id && id!=='ANY' && tiroSet.has(id) && pool.includes(id))
+          : null;
+        if(desplazado){
+          ag = commit(desplazado, 'PUERTA');
+          fijo = true;
         } else {
-          cand = pool.filter(id=>!salaHab().includes(id));
-          if(!cand.length) cand = [...pool];
+          let cand;
+          if(tempActive){
+            cand = pool.filter(id=>salaHab().includes(id));
+            if(!cand.length) cand = [...pool];
+          } else {
+            cand = pool.filter(id=>!salaHab().includes(id));
+            if(!cand.length) cand = [...pool];
+          }
+          ag = chooseFair(applyReserve(cand, unitIdx), 'PUERTA', 'PUERTA', agents);
         }
-        ag = chooseFair(applyReserve(cand, unitIdx), 'PUERTA', 'PUERTA', agents);
       } else if(u.restrictType){
         const list = getRestrictList(u.restrictType);
         const cand = pool.filter(id=>list.includes(id));
@@ -1377,12 +1392,14 @@ function checkLongAbsences(){
   }
 }
 
-function buildWeekData(monday, weekType){
+function buildWeekData(monday, weekType, tiroAgents){
   histUnitCounts = aggregateUnitHistory(isoDate(monday));
   const sets = workingSetsForWeek(weekType);
   const counts = {};
   const doneMap = {};
   const days = [];
+  // El tiro es siempre en lunes: solo ese día aplica la regla de titulares → PUERTA
+  const tiroSet = (tiroAgents && tiroAgents.length) ? new Set(tiroAgents) : null;
   DAY_NAMES.forEach((dayName, idx)=>{
     const date = new Date(monday);
     date.setDate(date.getDate()+idx);
@@ -1390,7 +1407,7 @@ function buildWeekData(monday, weekType){
       days.push({dayName, date: isoDate(date), skip:true});
       return;
     }
-    const day = buildDay(dayName, sets, counts, doneMap, date);
+    const day = buildDay(dayName, sets, counts, doneMap, date, dayName==='Lunes' ? tiroSet : null);
     days.push({
       dayName,
       date: isoDate(date),
@@ -1667,7 +1684,8 @@ function regenerateFromDay(data, dayIndex){
       data.days[i] = {dayName, date: isoDate(dateObj), skip:true};
       continue;
     }
-    const day = buildDay(dayName, sets, counts, doneMap, dateObj);
+    const day = buildDay(dayName, sets, counts, doneMap, dateObj,
+      (dayName==='Lunes' && data.tiro && data.tiro.length) ? new Set(data.tiro) : null);
     data.days[i] = {
       dayName,
       date: isoDate(dateObj),
@@ -1830,7 +1848,7 @@ async function goToWeek(monday, autoGenerate){
     const pract = practicasDeSemana(monday, info.weekType);
     let tiroAgents = null;
     if(pract.tiro) tiroAgents = await pedirAgentesTiro(pract.tiro);
-    currentData = buildWeekData(monday, info.weekType);
+    currentData = buildWeekData(monday, info.weekType, tiroAgents);
     if(tiroAgents && tiroAgents.length) currentData.tiro = tiroAgents;
     if(pract.taser) currentData.taser = true;
     renderResults(currentData);
@@ -1898,10 +1916,24 @@ function pedirAgentesTiro(fechaIso){
     tiroOverlay.style.display = 'flex';
   });
 }
+// Ocupantes de Patrimonio (AYUNTAMIENTO y ALMUDI) previstos para un lunes concreto.
+// Si uno de ellos va al tiro, ese día hará PUERTA; como PUERTA solo tiene una plaza,
+// no pueden ir los dos al tiro el mismo día.
+function ocupantesPatrimonio(fechaIso){
+  const tempActive = new Date(fechaIso + 'T00:00:00') < TEMP_RULES_CUTOFF;
+  const pool = poolDeLunes(fechaIso);
+  const occ = new Set();
+  const ayto = fijosPatrimonio.ayuntamientoTitular;
+  if(ayto && ayto!=='ANY' && pool.includes(ayto)) occ.add(ayto);
+  const almudi = (tempActive && pool.includes('724')) ? '724' : fijosPatrimonio.almudiTitular;
+  if(almudi && almudi!=='ANY' && pool.includes(almudi)) occ.add(almudi);
+  return occ;
+}
 function drawTiroGrid(fechaIso){
   const grid = document.getElementById('tiroGrid');
   grid.innerHTML = '';
   const counts = tiroCountsHistoricos();
+  const occ = ocupantesPatrimonio(fechaIso);
   let pool = poolDeLunes(fechaIso);
   if(!pool.length) pool = ALL_RANGO_IDS.slice();
   // Los que menos prácticas llevan, arriba (a igualdad, por número de agente)
@@ -1910,10 +1942,16 @@ function drawTiroGrid(fechaIso){
     const on = tiroSelection.has(id);
     const chip = document.createElement('label');
     chip.className = 'hab-chip' + (on ? ' on' : '');
-    chip.innerHTML = `<input type="checkbox" ${on?'checked':''}> ${labelOf(id)} (${counts[id]||0})`;
+    chip.title = occ.has(id) ? 'Titular de Patrimonio: si va al tiro, ese día hará PUERTA' : '';
+    chip.innerHTML = `<input type="checkbox" ${on?'checked':''}> ${occ.has(id) ? '🏛️ ' : ''}${labelOf(id)} (${counts[id]||0})`;
     chip.querySelector('input').addEventListener('change', e=>{
       if(e.target.checked){
         if(tiroSelection.size >= 4){ e.target.checked = false; return; }
+        if(occ.has(id) && [...tiroSelection].some(x=>occ.has(x))){
+          e.target.checked = false;
+          alert('El titular del AYUNTAMIENTO y el del ALMUDÍ no pueden ir al tiro el mismo día: al ir uno al tiro pasa a cubrir la PUERTA, y solo hay una. Deselecciona al otro titular primero.');
+          return;
+        }
         tiroSelection.add(id);
       } else {
         tiroSelection.delete(id);
@@ -1949,7 +1987,7 @@ function practicasDeSemana(monday, weekType){
 }
 
 function doGenerate(info, tiroAgents, taserFlag){
-  currentData = buildWeekData(info.monday, info.weekType);
+  currentData = buildWeekData(info.monday, info.weekType, tiroAgents);
   if(tiroAgents && tiroAgents.length) currentData.tiro = tiroAgents; // lunes: estos 4 van al tiro
   if(taserFlag) currentData.taser = true;                            // jueves: V154 y V164 al táser
   renderResults(currentData);
@@ -2004,7 +2042,7 @@ async function generarMes(){
       const pract = practicasDeSemana(monday, weekType);
       let tiroAgents = null;
       if(pract.tiro) tiroAgents = await pedirAgentesTiro(pract.tiro);
-      currentData = buildWeekData(monday, weekType);
+      currentData = buildWeekData(monday, weekType, tiroAgents);
       if(tiroAgents && tiroAgents.length) currentData.tiro = tiroAgents;
       if(pract.taser) currentData.taser = true;
       renderResults(currentData);
@@ -2088,6 +2126,90 @@ async function printMonthBlock(){
   window.print();
 }
 document.getElementById('pdfMesBtn').addEventListener('click', printMonthBlock);
+
+// ---------- EXCEL DEL MES (BLOQUE COMPLETO) ----------
+// La librería (SheetJS) se carga solo la primera vez que se usa, para no penalizar la carga de la app.
+function ensureXLSX(){
+  return new Promise((resolve, reject)=>{
+    if(window.XLSX) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = resolve;
+    s.onerror = ()=>reject(new Error('No se pudo descargar la librería de Excel. Comprueba la conexión.'));
+    document.head.appendChild(s);
+  });
+}
+
+// Una hoja por semana: matriz Unidad × Día, con MANDO arriba y PICO/TIRO/TASER al final
+function hojaDeSemana(wb, data){
+  const dias = data.days.filter(d=>!d.skip);
+  const rows = [];
+  const mondayObj = new Date(data.monday + 'T00:00:00');
+  const sundayObj = new Date(mondayObj); sundayObj.setDate(sundayObj.getDate() + 6);
+  rows.push(['CUADRANTE · SEMANA ' + data.weekNum + ' · FASE ' + data.weekType + ' · ' + fmtDate(mondayObj) + ' — ' + fmtDate(sundayObj)]);
+  rows.push([]);
+  rows.push(['UNIDAD', ...dias.map(d=>d.dayName.toUpperCase() + ' ' + fmtDate(new Date(d.date + 'T00:00:00')))]);
+  rows.push(['MANDO', ...dias.map(d=>{
+    const m = String(d.mandoLabel).split(' · ').filter(x=>/^CH\d+/.test(x.trim()));
+    return m.length ? m.join(', ') : d.mandoLabel;
+  })]);
+  // Unidades en orden de aparición, unificando SALA 2 / V CH en una sola fila
+  const orden = [];
+  dias.forEach(d=>(d.assignments||[]).forEach(a=>{
+    const key = normalizeUnitName(a.unit);
+    if(!orden.includes(key)) orden.push(key);
+  }));
+  orden.forEach(key=>{
+    let etiqueta = key;
+    const fila = dias.map(d=>{
+      const a = (d.assignments||[]).find(x=>normalizeUnitName(x.unit)===key);
+      if(!a) return '';
+      if(a.unit !== key) etiqueta = key + ' / ' + a.unit;
+      return a.agents.map(ag=>ag==='SIN CUBRIR' ? 'SIN CUBRIR' : agentLabel(ag)).join(', ');
+    });
+    rows.push([etiqueta, ...fila]);
+  });
+  rows.push(['PICO', ...dias.map(d=>(d.pico||[]).map(id=>agentLabel(id)).join(', '))]);
+  if(data.tiro && data.tiro.length){
+    rows.push(['TIRO', ...dias.map(d=>d.dayName==='Lunes' ? data.tiro.map(id=>agentLabel(id)).join(', ') : '')]);
+  }
+  if(data.taser){
+    rows.push(['TASER', ...dias.map(d=>d.dayName==='Jueves' ? 'V154 y V164' : '')]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:18}, ...dias.map(()=>({wch:28}))];
+  XLSX.utils.book_append_sheet(wb, ws, 'Semana ' + data.weekNum);
+}
+
+async function generarExcel(){
+  const val = document.getElementById('datePicker').value;
+  if(!val) return;
+  const base = new Date(val + 'T00:00:00');
+  const mondays = mondaysOfMonth(base);
+  const nombreMes = base.toLocaleDateString('es-ES', {month:'long', year:'numeric'});
+  const btn = document.getElementById('excelBtn');
+  btn.disabled = true;
+  try{
+    await loadAllWeeks();
+    const weeks = mondays.map(m=>allWeeksCache[isoDate(m)]).filter(Boolean);
+    if(!weeks.length){
+      alert('No hay ninguna semana guardada del mes de ' + nombreMes + '. Usa "Generar mes (bloque)" primero.');
+      return;
+    }
+    if(weeks.length < mondays.length && !confirm(`Solo hay ${weeks.length} de ${mondays.length} semanas guardadas para ${nombreMes}. ¿Exportar las que hay?`)) return;
+    await ensureXLSX();
+    const wb = XLSX.utils.book_new();
+    weeks.forEach(w=>hojaDeSemana(wb, w));
+    XLSX.writeFile(wb, 'cuadrante_' + nombreMes.replace(/\s+/g,'_') + '.xlsx');
+    document.getElementById('saveStatus').textContent = 'Excel del mes de ' + nombreMes + ' descargado ✓';
+  }catch(e){
+    console.error(e);
+    alert(e.message || 'No se pudo generar el Excel.');
+  }finally{
+    btn.disabled = false;
+  }
+}
+document.getElementById('excelBtn').addEventListener('click', generarExcel);
 
 // ---------- COMPARTIR POR WHATSAPP ----------
 const waOverlay = document.getElementById('waOverlay');

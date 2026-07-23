@@ -290,6 +290,42 @@ console.log('11. Generar mes: bloque de lunes correcto');
      `febrero 2027: lunes esperados 01..22/02, obtenidos ${feb.join(', ')}`);
 }
 
+// ---------- 12. Tiro: titulares de Patrimonio van a PUERTA y sus puestos se cubren ----------
+console.log('12. Día de tiro: titular de Patrimonio a PUERTA, puesto cubierto por reglas');
+resetConfig();
+for (let i = 0; i < REPS; i++){
+  // a) El titular del AYUNTAMIENTO (633) va al tiro → el lunes hace PUERTA y no AYUNTAMIENTO
+  let wk = t.buildWeekData(new Date(SEMANA_B + 'T00:00:00'), 'B', ['633', '914', '979', '1043']);
+  let lunes = wk.days.find(d => d.dayName === 'Lunes');
+  let ayto = unitsOf(lunes).find(a => a.unit === 'AYUNTAMIENTO');
+  let puerta = unitsOf(lunes).find(a => a.unit === 'PUERTA');
+  ok(!ayto.agents.includes('633'), 'lunes de tiro: 633 sigue en AYUNTAMIENTO');
+  ok(puerta.agents[0] === '633', `lunes de tiro: 633 debería estar en PUERTA, está ${puerta.agents[0]}`);
+  ok(!ayto.agents.includes('SIN CUBRIR'), 'lunes de tiro: AYUNTAMIENTO quedó sin cubrir');
+  for (const a of unitsOf(lunes)){
+    if (a.unit === 'AYUNTAMIENTO' || a.unit === 'ALMUDI'){
+      for (const tiroAg of ['633', '914', '979', '1043'])
+        ok(!a.agents.includes(tiroAg), `lunes de tiro: ${tiroAg} (con tiro) en ${a.unit}`);
+    }
+  }
+  // El resto de la semana, 633 vuelve a su régimen normal (puede hacer AYUNTAMIENTO)
+  const otroDia = wk.days.find(d => !d.skip && d.dayName !== 'Lunes');
+  const aytoOtro = unitsOf(otroDia).find(a => a.unit === 'AYUNTAMIENTO');
+  ok(aytoOtro.agents[0] === '633', 'tras el tiro: 633 debería recuperar AYUNTAMIENTO el ' + otroDia.dayName);
+
+  // b) El 724 (ocupante de ALMUDI hasta el corte) va al tiro → lunes a PUERTA, ALMUDI al titular 582
+  wk = t.buildWeekData(new Date(SEMANA_B + 'T00:00:00'), 'B', ['724', '914', '979', '1043']);
+  lunes = wk.days.find(d => d.dayName === 'Lunes');
+  const almudi = unitsOf(lunes).find(a => a.unit === 'ALMUDI');
+  puerta = unitsOf(lunes).find(a => a.unit === 'PUERTA');
+  ok(!almudi.agents.includes('724'), 'lunes de tiro: 724 sigue en ALMUDI');
+  ok(puerta.agents[0] === '724', `lunes de tiro: 724 debería estar en PUERTA, está ${puerta.agents[0]}`);
+  ok(almudi.agents[0] === '582', `lunes de tiro: ALMUDI debería cubrirlo el titular 582, está ${almudi.agents[0]}`);
+  const otroDia2 = wk.days.find(d => !d.skip && d.dayName !== 'Lunes');
+  const almudiOtro = unitsOf(otroDia2).find(a => a.unit === 'ALMUDI');
+  ok(almudiOtro.agents[0] === '724', 'tras el tiro: 724 debería recuperar ALMUDI el ' + otroDia2.dayName);
+}
+
 // ---------- resumen ----------
 console.log('');
 if (failures){
