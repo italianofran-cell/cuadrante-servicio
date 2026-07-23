@@ -1237,11 +1237,13 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
           ag = chooseFair(applyReserve(cand, unitIdx), 'ALMUDI', 'ALMUDI', agents);
         }
       } else if(u.special==='puerta'){
-        // Titular de Patrimonio con tiro hoy: va obligatoriamente a la PUERTA
-        const ocupanteAlmudi = tempActive ? '724' : fijosPatrimonio.almudiTitular;
+        // Titular de Patrimonio con tiro hoy: va obligatoriamente a la PUERTA.
+        // Cuenta el titular del ALMUDI también mientras el 724 ocupe el puesto (hasta 01/09):
+        // si es limitado a Patrimonio, la PUERTA es su único destino posible el día de tiro.
+        const candidatosTitular = [fijosPatrimonio.ayuntamientoTitular, fijosPatrimonio.almudiTitular];
+        if(tempActive) candidatosTitular.push('724');
         const desplazado = tiroSet
-          ? [fijosPatrimonio.ayuntamientoTitular, ocupanteAlmudi]
-              .find(id=>id && id!=='ANY' && tiroSet.has(id) && pool.includes(id))
+          ? candidatosTitular.find(id=>id && id!=='ANY' && tiroSet.has(id) && pool.includes(id))
           : null;
         if(desplazado){
           ag = commit(desplazado, 'PUERTA');
@@ -1923,10 +1925,8 @@ function ocupantesPatrimonio(fechaIso){
   const tempActive = new Date(fechaIso + 'T00:00:00') < TEMP_RULES_CUTOFF;
   const pool = poolDeLunes(fechaIso);
   const occ = new Set();
-  const ayto = fijosPatrimonio.ayuntamientoTitular;
-  if(ayto && ayto!=='ANY' && pool.includes(ayto)) occ.add(ayto);
-  const almudi = (tempActive && pool.includes('724')) ? '724' : fijosPatrimonio.almudiTitular;
-  if(almudi && almudi!=='ANY' && pool.includes(almudi)) occ.add(almudi);
+  [fijosPatrimonio.ayuntamientoTitular, fijosPatrimonio.almudiTitular, tempActive ? '724' : null]
+    .forEach(id=>{ if(id && id!=='ANY' && pool.includes(id)) occ.add(id); });
   return occ;
 }
 function drawTiroGrid(fechaIso){

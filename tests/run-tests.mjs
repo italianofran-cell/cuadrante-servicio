@@ -326,6 +326,62 @@ for (let i = 0; i < REPS; i++){
   ok(almudiOtro.agents[0] === '724', 'tras el tiro: 724 debería recuperar ALMUDI el ' + otroDia2.dayName);
 }
 
+// ---------- 13. Escenario 642: limitado a Patrimonio, titular de ALMUDI, tiro → PUERTA ----------
+console.log('13. Escenario 642: solo Patrimonio, fijo en ALMUDI, con tiro va a PUERTA');
+{
+  resetConfig();
+  const fijosOriginales = Object.assign({}, S.fijosPatrimonio);
+  t.set({
+    limitadosFisicos: ['642'],
+    fijosPatrimonio: Object.assign({}, fijosOriginales, {almudiTitular: '642'})
+  });
+  const SEMANA_B_POST = '2026-09-14'; // primera fase B tras la marcha del 724
+  {
+    const chk = mkWeek(SEMANA_B_POST);
+    ok(chk.weekType === 'B', `la semana ${SEMANA_B_POST} debería ser fase B, es ${chk.weekType}`);
+  }
+  const UNIDADES_PATRIMONIO = ['AYUNTAMIENTO', 'ALMUDI', 'PUERTA'];
+
+  for (let i = 0; i < REPS; i++){
+    // a) "Solo hace patrimonio": en cualquier semana, 642 nunca aparece fuera de Patrimonio
+    for (const monday of [SEMANA_B, SEMANA_A, SEMANA_B_POST]){
+      const wk = mkWeek(monday);
+      for (const d of serviceDays(wk)) for (const a of unitsOf(d)){
+        if (a.agents.includes('642'))
+          ok(UNIDADES_PATRIMONIO.includes(t.normalizeUnitName(a.unit)), `${monday} ${d.dayName}: 642 (limitado) en ${a.unit}`);
+      }
+    }
+
+    // b) "Fijo en ALMUDI": tras la marcha del 724, ALMUDI es del 642 todos los días de servicio
+    const post = t.buildWeekData(new Date(SEMANA_B_POST + 'T00:00:00'), 'B');
+    for (const d of serviceDays(post)){
+      const almudi = unitsOf(d).find(a => a.unit === 'ALMUDI');
+      ok(almudi.agents[0] === '642', `${SEMANA_B_POST} ${d.dayName}: ALMUDI debería ser del titular 642, es ${almudi.agents[0]}`);
+    }
+
+    // c) Con tiro (tras el corte): el lunes 642 va a PUERTA y su ALMUDI se cubre por las reglas
+    const postTiro = t.buildWeekData(new Date(SEMANA_B_POST + 'T00:00:00'), 'B', ['642', '914', '979', '1043']);
+    const lunes = postTiro.days.find(d => d.dayName === 'Lunes');
+    const puerta = unitsOf(lunes).find(a => a.unit === 'PUERTA');
+    const almudiL = unitsOf(lunes).find(a => a.unit === 'ALMUDI');
+    ok(puerta.agents[0] === '642', `lunes de tiro post-corte: 642 debería estar en PUERTA, está ${puerta.agents[0]}`);
+    ok(!almudiL.agents.includes('642') && !almudiL.agents.includes('SIN CUBRIR'),
+       `lunes de tiro post-corte: ALMUDI mal cubierto (${almudiL.agents.join(',')})`);
+    const otro = postTiro.days.find(d => !d.skip && d.dayName !== 'Lunes');
+    ok(unitsOf(otro).find(a => a.unit === 'ALMUDI').agents[0] === '642',
+       'tras el tiro: 642 debería recuperar ALMUDI el ' + otro.dayName);
+
+    // d) Con tiro ANTES del corte (el 724 aún ocupa ALMUDI): 642 titular también va a PUERTA
+    const preTiro = t.buildWeekData(new Date(SEMANA_B + 'T00:00:00'), 'B', ['642', '914', '979', '1043']);
+    const lunesPre = preTiro.days.find(d => d.dayName === 'Lunes');
+    const puertaPre = unitsOf(lunesPre).find(a => a.unit === 'PUERTA');
+    const almudiPre = unitsOf(lunesPre).find(a => a.unit === 'ALMUDI');
+    ok(puertaPre.agents[0] === '642', `lunes de tiro pre-corte: 642 debería estar en PUERTA, está ${puertaPre.agents[0]}`);
+    ok(almudiPre.agents[0] === '724', `lunes de tiro pre-corte: ALMUDI debería seguir siendo del 724, es ${almudiPre.agents[0]}`);
+  }
+  t.set({ fijosPatrimonio: fijosOriginales }); // restaura la config para no contaminar otros tests
+}
+
 // ---------- resumen ----------
 console.log('');
 if (failures){
