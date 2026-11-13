@@ -631,7 +631,7 @@ const AGENTS = {
   1043:{label:'1043', cat:'g52'}, 1058:{label:'1058', cat:'g52'}, 1131:{label:'1131', cat:'g52'},
   1133:{label:'1133', cat:'g52'}, 1140:{label:'1140', cat:'g52'}, 1162:{label:'1162', cat:'g52'},
   1165:{label:'1165', cat:'g52'}, 1205:{label:'1205', cat:'g52'}, 1232:{label:'1232', cat:'g52'},
-  1257:{label:'1257', cat:'g52'},
+  1257:{label:'1257', cat:'g52'}, 1260:{label:'1260', cat:'g52'}, 1303:{label:'1303', cat:'g52'},
   995:{label:'995', cat:'g2'}, 1041:{label:'1041', cat:'g2'}, 1068:{label:'1068', cat:'g2'},
   1111:{label:'1111', cat:'g2'}, 1112:{label:'1112', cat:'g2'}, 1132:{label:'1132', cat:'g2'},
   1151:{label:'1151', cat:'g2'}, 1161:{label:'1161', cat:'g2'}, 1167:{label:'1167', cat:'g2'},
@@ -645,13 +645,13 @@ const CAT_LABELS = {
 };
 const MANDO_ORDER = ['CH119','CH154','CH164'];
 const G43_RANGO = ['582','633','642','647','669','791','914','979','724'];
-const G52_RANGO = ['864','908','1015','1043','1058','1131','1133','1140','1162','1165','1205','1232','1257'];
+const G52_RANGO = ['864','908','1015','1043','1058','1131','1133','1140','1162','1165','1205','1232','1257','1260','1303'];
 const G2 = ['995','1041','1068','1111','1112','1132','1151','1161','1167','1174','1175','1258'];
 const ALL_RANGO_IDS = [...G43_RANGO, ...G52_RANGO, ...G2];
 
 // Valores por defecto (se pueden editar desde los botones "Habilitados LUNA / SALA")
 const DEFAULT_SALA_HAB = ['979','914','1043','633','1111','995','791'];
-const DEFAULT_LUNA_HAB = ['633','669','914','979','864','908','1015','1058','995','1041','1112'];
+const DEFAULT_LUNA_HAB = ['633','669','914','979','864','908','1015','1058','995','1041','1112','1260','1303'];
 let habilitadosSala = [...DEFAULT_SALA_HAB];
 let habilitadosLuna = [...DEFAULT_LUNA_HAB];
 function salaHab(){ return habilitadosSala; }
@@ -787,8 +787,11 @@ const appStorage = {
 let agentStatus = {};
 
 function intervalosDe(id){ return agentStatus[id] || []; }
+// Fechas de incorporación: antes de esta fecha el agente no entra en el reparto.
+const FECHAS_ALTA = { '1260':'2026-11-16', '1303':'2026-11-16' };
 function isAbsentOn(id, dateObj){
   const d = dateObj ? isoDate(dateObj) : isoDate(new Date());
+  if(FECHAS_ALTA[id] && d < FECHAS_ALTA[id]) return true;
   return intervalosDe(id).some(iv => d >= iv.desde && (!iv.vuelve || d < iv.vuelve));
 }
 function intervaloActual(id){
@@ -2339,6 +2342,18 @@ async function loadConfig(){
     const res = await appStorage.get('agent_names', false);
     if(res && res.value) agentNames = JSON.parse(res.value);
   }catch(e){}
+  // Alta de 1260 (Cárceles) y 1303 (R. Valcárcel): se añaden una sola vez a habilitados LUNA y nombres
+  try{
+    const res = await appStorage.get('migr_alta_1260_1303', false);
+    if(!(res && res.value)){
+      ['1260','1303'].forEach(id=>{ if(!habilitadosLuna.includes(id)) habilitadosLuna.push(id); });
+      if(!agentNames['1260']) agentNames['1260'] = 'Cárceles';
+      if(!agentNames['1303']) agentNames['1303'] = 'R. Valcárcel';
+      await appStorage.set('habilitados_luna', JSON.stringify(habilitadosLuna), false);
+      await appStorage.set('agent_names', JSON.stringify(agentNames), false);
+      await appStorage.set('migr_alta_1260_1303', '1', false);
+    }
+  }catch(e){ console.error(e); }
   try{
     const res = await appStorage.get('practice_days', false);
     if(res && res.value) practiceDays = JSON.parse(res.value);
