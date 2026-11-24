@@ -129,7 +129,7 @@ for (let i = 0; i < REPS; i++){
 // ---------- 3. Habilitados: SALA 1 (sin 791), SALA 2 / V CH, LUNA, PUERTA (regla temporal) ----------
 console.log('3. Habilitados de SALA, LUNA y PUERTA');
 resetConfig();
-for (let i = 0; i < REPS; i++) for (const monday of [SEMANA_B, SEMANA_A]){
+for (let i = 0; i < REPS; i++) for (const monday of [SEMANA_B, SEMANA_A, SEMANA_POST]){
   const wk = mkWeek(monday);
   for (const d of serviceDays(wk)) for (const a of unitsOf(d)){
     const un = t.normalizeUnitName(a.unit);
@@ -390,6 +390,37 @@ console.log('13. Escenario 642: solo Patrimonio, fijo en ALMUDI, con tiro va a P
     ok(almudiPre.agents[0] === '724', `lunes de tiro pre-corte: ALMUDI debería seguir siendo del 724, es ${almudiPre.agents[0]}`);
   }
   t.set({ fijosPatrimonio: fijosOriginales }); // restaura la config para no contaminar otros tests
+}
+
+// ---------- 14. Grupo 2 emparejado consigo mismo en las unidades de 2 (días que trabaja) ----------
+console.log('14. Grupo 2 se empareja entre sí en las unidades libres de 2 (Lunes de ambas fases)');
+resetConfig();
+{
+  const G2SET = new Set(S.G2);
+  // Unidades libres de 2 efectivos (sin restricción ni fijo): V10, V20, V40, V30, V60.
+  const freePairUnits = new Set(Object.keys(S.UNIT_DEFS).filter(k => {
+    const d = S.UNIT_DEFS[k];
+    return d.count === 2 && !d.restrictType && !d.special;
+  }));
+  for (const monday of [SEMANA_B, SEMANA_A]) for (let i = 0; i < REPS; i++){
+    const wk = mkWeek(monday); // Lunes es el primer día de servicio en ambas fases: doneMap vacío
+    const lunes = wk.days.find(d => d.dayName === 'Lunes' && !d.skip);
+    if (!lunes) continue;
+    let mezclados = 0;   // unidades libres de 2 con un G2 y un no-G2 juntos
+    let paresG2 = 0;     // unidades libres de 2 formadas por dos del Grupo 2
+    for (const a of unitsOf(lunes)){
+      if (!freePairUnits.has(t.normalizeUnitName(a.unit))) continue;
+      const ags = agentsInUnit(a);
+      if (ags.length !== 2) continue; // alguna plaza SIN CUBRIR: no cuenta como mezcla
+      const g2 = ags.filter(x => G2SET.has(x)).length;
+      if (g2 === 2) paresG2++;
+      else if (g2 === 1) mezclados++;
+    }
+    // Como mucho un G2 suelto puede quedar mezclado (número impar tras SALA/LUNA); el resto, en pareja G2.
+    ok(mezclados <= 1, `${monday} Lunes: ${mezclados} unidades de 2 mezclan Grupo 2 con otros (máx. tolerado 1)`);
+    // La regla debe ser efectiva: con plantilla completa quedan varias parejas enteras del Grupo 2.
+    ok(paresG2 >= 2, `${monday} Lunes: solo ${paresG2} parejas completas del Grupo 2 (se esperaban >= 2)`);
+  }
 }
 
 // ---------- resumen ----------

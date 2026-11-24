@@ -162,6 +162,21 @@ button.secondary{
   color:var(--cyan);
   border:1px solid var(--cyan);
 }
+a.btn-link{
+  display:inline-block;
+  font-family:var(--font-display);
+  font-weight:600;
+  font-size:14px;
+  letter-spacing:.3px;
+  background:var(--panel-2);
+  color:var(--cyan);
+  border:1px solid var(--cyan);
+  padding:12px 22px;
+  border-radius:7px;
+  cursor:pointer;
+  text-decoration:none;
+}
+a.btn-link:hover{filter:brightness(1.08);}
 button:disabled{opacity:.4;cursor:not-allowed;}
 /* Panel de ajustes agrupado por función */
 .settings-group{margin-bottom:12px;}
@@ -434,6 +449,7 @@ tbody tr:nth-child(even):not(.pico-row):not(.row-empty){background:rgba(255,255,
   <div class="row" style="margin-bottom:10px;">
     <button class="secondary" id="ajustesBtn" type="button">Ajustes ▾</button>
     <button class="secondary" id="dbBtn" type="button">🗂️ Cuadrantes pasados</button>
+    <a class="btn-link" id="vigilanciasBtn" href="https://vigilancias.vercel.app/" target="_blank" rel="noopener">👁️ Vigilancias</a>
     <span class="sub" id="userBadge" style="display:none;"></span>
     <button class="ghost" id="logoutBtn" type="button" style="display:none;">Cerrar sesión</button>
   </div>
@@ -648,6 +664,10 @@ const G43_RANGO = ['582','633','642','647','669','791','914','979','724'];
 const G52_RANGO = ['864','908','1015','1043','1058','1131','1133','1140','1162','1165','1205','1232','1257','1260','1303'];
 const G2 = ['995','1041','1068','1111','1112','1132','1151','1161','1167','1174','1175','1258'];
 const ALL_RANGO_IDS = [...G43_RANGO, ...G52_RANGO, ...G2];
+// Grupo 2: en las unidades de 2 efectivos van emparejados entre ellos (no se mezclan con
+// g43/g52) siempre que se pueda. Es una preferencia blanda: cede ante las reglas ya
+// establecidas (SALA/LUNA por habilitados, patrimonio, no repetir unidad, cobertura).
+const G2SET = new Set(G2);
 
 // Valores por defecto (se pueden editar desde los botones "Habilitados LUNA / SALA")
 const DEFAULT_SALA_HAB = ['979','914','1043','633','1111','995','791'];
@@ -658,7 +678,7 @@ function salaHab(){ return habilitadosSala; }
 function sala1Hab(){ return habilitadosSala.filter(id=>id!=='791'); } // 791 nunca puede hacer SALA 1
 function lunaHab(){ return habilitadosLuna; }
 
-// Fijos de patrimonio (AYUNTAMIENTO / ALMUDI). PUERTA no tiene fijo: la puede hacer cualquiera.
+// Fijos de patrimonio (AYUNTAMIENTO / ALMUDI). PUERTA no tiene fijo: la cubren los habilitados de SALA.
 // En los backups el valor 'ANY' significa "cualquiera": si el titular falta, se elige por reparto equitativo.
 let fijosPatrimonio = { ayuntamientoTitular:'633', ayuntamientoBackup:'724', almudiTitular:'582', almudiBackup:'ANY' };
 
@@ -680,9 +700,10 @@ function labelOf(id){
   return agentNames[id] ? base + ' · ' + agentNames[id] : base;
 }
 
+// La PUERTA (comisaría) solo la cubren los habilitados de SALA (regla permanente;
+// excepción: el día de tiro el titular de Patrimonio desplazado ocupa la PUERTA aunque no esté habilitado).
 // Reglas temporales vigentes hasta el 01/09/2026:
 // - SALA 2 solo existe como tal Viernes y Sábado; el resto de días ese puesto se llama V CH (mismos habilitados que SALA 2)
-// - PUERTA solo la cubren los habilitados de SALA
 const TEMP_RULES_CUTOFF = new Date(2026,8,1);
 // La agente 724 desaparece del sistema el 31/07/2026: ese día ya no entra en el reparto.
 // Mientras esté activa, SOLO puede hacer ALMUDI (y el puesto es suyo por delante del titular).
@@ -1126,8 +1147,14 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
     if(!cand.length) return null;
     const notRepeat = cand.filter(id => !(doneMap[id] && doneMap[id].has(doneKey)));
     const usePool = notRepeat.length ? notRepeat : cand;
+    // Afinidad de Grupo 2: si en esta unidad ya hay compañero, preferir a alguien de su
+    // misma clase (G2 con G2, resto con resto). Blando: solo ordena, no filtra, por lo que
+    // si no queda ninguno de la misma clase se coge igualmente (mezcla permitida como excepción).
+    const realPartners = (partners||[]).filter(p=>p && p!=='SIN CUBRIR');
+    const wantG2 = realPartners.length ? realPartners.some(p=>G2SET.has(p)) : null;
+    const groupRank = id => (wantG2===null ? 0 : (G2SET.has(id)===wantG2 ? 0 : 1));
     const shuffled = shuffle([...usePool]);
-    shuffled.sort((a,b)=>((counts[a]||0)-(counts[b]||0)) || (histCount(a,unitName)-histCount(b,unitName)));
+    shuffled.sort((a,b)=>(groupRank(a)-groupRank(b)) || ((counts[a]||0)-(counts[b]||0)) || (histCount(a,unitName)-histCount(b,unitName)));
     return commit(shuffled[0], doneKey);
   }
 
@@ -1174,7 +1201,7 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
       if(!dd) continue;
       let list = null, dk = null;
       if(dd.restrictType){ list = getRestrictList(dd.restrictType); dk = dd.unitKey || key; }
-      else if(dd.special==='puerta' && tempActive){ list = salaHab(); dk = 'PUERTA'; }
+      else if(dd.special==='puerta'){ list = salaHab(); dk = 'PUERTA'; }
       if(!list) continue;
       if(!agg[dk]) agg[dk] = {list, plazas:0};
       agg[dk].plazas += dd.count;
@@ -1254,14 +1281,9 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
           ag = commit(desplazado, 'PUERTA');
           fijo = true;
         } else {
-          let cand;
-          if(tempActive){
-            cand = pool.filter(id=>salaHab().includes(id));
-            if(!cand.length) cand = [...pool];
-          } else {
-            cand = pool.filter(id=>!salaHab().includes(id));
-            if(!cand.length) cand = [...pool];
-          }
+          // La PUERTA (comisaría) solo la cubren los habilitados de SALA.
+          let cand = pool.filter(id=>salaHab().includes(id));
+          if(!cand.length) cand = [...pool]; // salvaguarda: nunca dejar la PUERTA sin cubrir
           ag = chooseFair(applyReserve(cand, unitIdx), 'PUERTA', 'PUERTA', agents);
         }
       } else if(u.restrictType){
@@ -1294,7 +1316,7 @@ function buildDay(dayName, sets, counts, doneMap, dateObj, tiroSet){
       const list = getRestrictList(def.restrictType);
       if(!list.includes(B)) return false;
     }
-    if(def.special==='puerta' && tempActive && !salaHab().includes(B)) return false;
+    if(def.special==='puerta' && !salaHab().includes(B)) return false;
     return compatOk(B, currentAgents.filter(x=>x!==excludeAgent));
   }
   assignments.forEach((a, ai)=>{
